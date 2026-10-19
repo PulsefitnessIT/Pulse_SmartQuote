@@ -94,6 +94,9 @@ def field_indexes(headers: list[str]) -> dict[str, int]:
                 if any(value.startswith(candidate + " ") for candidate in candidates):
                     fields[field] = i
                     break
+    # Two late-2020 sheets use the column label "133h" for SKU codes.
+    if "sku" not in fields and len(values) > 4 and values[2] == "133h" and values[4] == "stock item name":
+        fields["sku"] = 2
     return fields
 
 
@@ -310,6 +313,30 @@ def build_master(files: list[Path], destination: Path):
                 "pricing_status": "Identity only: existing live RRP and tariff configuration unchanged."}
     (destination / "historical_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+    )
+    # Output schema consumed by engine.historical_identity(). The entire
+    # historical dataset is identity evidence; never an approved RRP source.
+    compact = {}
+    for code, item in canonical.items():
+        compact[code] = {
+            "sku": code, "year": item["year"], "rev": item["revision"],
+            "model": item.get("model", ""), "name": item.get("name", ""),
+            "console": item.get("console", ""), "status": item.get("status", ""),
+            "eol": item.get("end_of_life", ""),
+            "group": item.get("group", ""), "category": item.get("category", ""),
+            "old_sku": item.get("old_sku", ""),
+            "source": item.get("source", ""),
+            "first_seen": min(entry["year"] for entry in lineage[code]),
+            "evidence_only": True,
+        }
+    (destination / "historical_catalogue_index.json").write_text(
+        json.dumps({"records": compact,
+                    "aliases": {k: sorted(v) for k, v in aliases.items()}},
+                   ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    (destination / "historical_catalogue_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8",
     )
     return manifest
 
