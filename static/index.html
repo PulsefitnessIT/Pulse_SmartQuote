@@ -3,7 +3,7 @@
 <body>
 <div id="app">
  <aside class="sidebar">
-  <div class="logo-panel"><img src="/static/pulse_logo.png" alt="Pulse Fitness logo"><div class="app-brand">SMART<span>QUOTE</span> <span class="pilot">V9 PILOT</span></div></div>
+  <div class="logo-panel"><img src="/static/pulse_logo.png" alt="Pulse Fitness logo"><div class="app-brand">SMART<span>QUOTE</span> <span class="pilot">V10 INTERNAL PILOT</span></div></div>
   <div class="side-caption">WORKSPACE</div>
   <button class="nav selected" id="navBuilder"><span class="nav-icon">▧</span>Quote Builder <span class="nav-arrow">›</span></button>
   <button class="nav" id="navRegister"><span class="nav-icon">▤</span>Quote Register <span class="nav-arrow">›</span></button>
@@ -56,6 +56,7 @@
   <div id="registerView" class="hidden simple-view"><div class="inner-heading"><div class="eyebrow dark">WORKSPACE / QUOTES</div><h1>Quote register</h1><p>Local quotation register; saved PDFs are retained as immutable versions.</p></div><section class="panel"><div class="manager-toolbar"><button id="exportQuoteRegister" class="secondary-btn">↓ Export quote register CSV</button></div><div id="pipelineStats" class="manager-stats"></div></section><div class="panel" id="quotesList"></div></div>
   <div id="managerView" class="hidden simple-view">
    <div class="inner-heading"><div class="eyebrow dark">CATALOGUE / DATA CONTROL</div><h1>Master price list manager</h1><p>Search and correct equipment, update RRPs, update maintenance prices and import replacement price lists. Changes are logged and draft quote pricing is refreshed. Previously generated PDFs remain unchanged.</p></div>
+   <section class="panel manager-panel"><div class="readiness-panel" id="readinessPanel" aria-live="polite"><strong>Checking catalogue and commercial status...</strong></div></section>
    <section class="panel manager-panel"><div class="manager-toolbar"><button class="primary-btn" id="managerNew">+ Create equipment</button><button class="secondary-btn" id="managerExport">↓ Export managed catalogue CSV</button></div>
     <div id="managerStats" class="manager-stats"></div><div class="editor-help">Automatic prices use the original Pulse source RRP, equipment category and rate group. <b>Calculated estimate</b> means the price has been derived from the RRP and standard category tariff. Editing is restricted to a signed-in manager or administrator. Production deployment still requires central SSO.</div>
     <div class="form-grid"><label>Find item code, machine or model<input id="managerSearch" class="large-input" placeholder="e.g. 867H, 260G-ACC, storage rack"></label></div><div id="managerResults" class="manager-results"></div></section>

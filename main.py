@@ -6,6 +6,7 @@ from io import BytesIO
 import engine as eng
 import catalogue_admin as admin
 import security
+from catalogue_readiness import evaluate as evaluate_readiness
 from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
@@ -15,7 +16,7 @@ from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection
 from quote_pdf import create_quote_pdf
 from agreement_import import read_agreement_pdf
 
-app=FastAPI(title='Pulse Fitness SmartQuote',version='0.9.0',docs_url=None,redoc_url=None)
+app=FastAPI(title='Pulse Fitness SmartQuote',version='0.10.0',docs_url=None,redoc_url=None)
 
 @app.middleware('http')
 async def local_security(request:Request,call_next):
@@ -390,6 +391,10 @@ def historical_catalogue_lookup(identifier:str):
     result=eng.historical_identity(identifier)
     return result or {'lookup':identifier,'variant_count':0,'evidence_only':True,'variants':[],
                       'message':'No corresponding historical master identity found; do not infer an RRP.'}
+
+@app.get('/api/catalog/admin/readiness')
+def catalog_readiness():
+    return evaluate_readiness(ROOT, PRICING)
 
 @app.get('/api/catalog/admin/info')
 def catalog_info():

@@ -242,7 +242,9 @@ function bind(){
 let currentStage=null;
 async function loadManager(){
  try{
-  const [info,audit]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit')]);
+  const [info,audit,readiness]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit'),api('/api/catalog/admin/readiness')]);
+  const archive=readiness.historical;
+  $('readinessPanel').innerHTML=`<div class="readiness-heading"><div><b>V10 archive & commercial readiness</b><p>${archive.unique_skus.toLocaleString()} historical SKUs · ${archive.alias_codes.toLocaleString()} old codes · ${archive.source_years.join(', ')||'No sources loaded'}</p></div><span class="readiness-status ${readiness.automated_preflight_passes?'ready':'hold'}">${readiness.automated_preflight_passes?'Automated checks passed':'Pilot — review required'}</span></div><ul>${readiness.warnings.map(w=>`<li>${esc(w)}</li>`).join('')||'<li>Automated data checks passed. Manual quote/PDF sign-off is still required.</li>'}</ul><small>${esc(readiness.notice)}</small>`;
   $('managerStats').innerHTML=`<div><b>${info.rows.toLocaleString()}</b><small>Catalogue records</small></div><div><b>${info.unique_skus.toLocaleString()}</b><small>Unique item codes</small></div><div><b>${info.estimate_rows}</b><small>Calculated estimates</small></div><div><b>${info.duplicate_sku_count}</b><small>Conflicting item codes</small></div>`;
   $('managerHistory').innerHTML=audit.history.length?audit.history.map(x=>`<div class="audit-row"><b>${esc(x.sku)}</b> · ${esc(x.modified)} · ${esc(x.operator)}<br><small>${esc(x.reason)}</small></div>`).join(''):'<p class="editor-hint">No catalogue edits recorded yet.</p>';
   if($('managerSearch').value.trim().length>1)await searchManager();

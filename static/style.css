@@ -75,3 +75,8 @@
 .users-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e4ebee;gap:15px;padding:12px 4px;flex-wrap:wrap}
 .users-row button{margin-left:8px}
 .user-role{font-size:12px;color:#65777a;margin-left:6px}
+
+/* V10: Pulse Pro visual system, applied to the working quoting application. */
+:root{--ink:#162536;--ink2:#33465c;--cyan:#3c88df;--cyan2:#65a7ed;--pale:#eaf2ff;--bg:#f3f5f9;--line:#e1e7ef}
+.sidebar{background:#101923;color:#f4f7fc}.nav{color:#bdc9d8}.nav:hover{background:#22354c}.nav.selected{background:#203c5c;border-left-color:#5ca5ff}.sidebar-info{background:#1c2c3e;color:#eaf2ff}.sidebar-info p{color:#afc0d6}.sidebar-bottom{border-top-color:#35445a}.avatar{background:#275c9c}.hero{background:linear-gradient(115deg,#111f30,#254669)}.hero .circle{border-color:#305579}.hero p{color:#d0dfed}.nav-arrow{color:#9db6d4}.pilot{letter-spacing:.5px}
+.readiness-panel{display:flex;flex-direction:column;gap:12px}.readiness-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.readiness-heading b{font-size:15px;color:#1a2b42}.readiness-heading p{margin:5px 0 0;color:#59708d;font-size:12px}.readiness-status{font-weight:800;border-radius:999px;padding:8px 12px;font-size:11px}.readiness-status.hold{background:#fff3df;color:#8a5418}.readiness-status.ready{background:#e7f6ec;color:#206b3c}.readiness-panel ul{margin:0;padding-left:19px;color:#445775;line-height:1.7}.readiness-panel small{color:#64768b;line-height:1.6}
