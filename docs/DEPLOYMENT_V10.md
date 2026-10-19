@@ -43,3 +43,15 @@ commercial approval is missing.
 GitHub Actions produces this **pilot-only** ZIP when tests pass. A passing
 GitHub build alone is not evidence that the missing historical index or
 unapproved commercial prices have been resolved.
+
+## Recover previous V10 SQLite pilot identities
+
+If the only recovered source is a prior equipment-audit SQLite package, run:
+
+`python recover_v10_sqlite.py path/to/equipment_master_v10.sqlite --output recovered_historical`
+
+Then review the manifest and install with `install_historical_catalogue.py` for
+**controlled internal testing only**. Recovery excludes source RRPs and numeric
+aliases, keeps source row lineage, identifies metadata-only years and marks the
+archive **Not approved**. It is not a substitute for full 2020–2026 source
+reconciliation and cannot pass the commercial deployment gate on its own.
