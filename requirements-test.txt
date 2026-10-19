@@ -1,0 +1,5 @@
+-r requirements.txt
+# Starlette 1.x switched TestClient to a new client dependency (httpx2).
+# Keep the supported httpx-based TestClient for all V9/V10 regression tests.
+starlette>=0.46,<1
+httpx>=0.27,<1
