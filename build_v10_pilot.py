@@ -16,14 +16,15 @@ ALLOWED_DATA = {
     "legacy.json", "pricing.json", "historical_catalogue_index.json",
     "historical_catalogue_manifest.json",
 }
-ROOT_EXTENSIONS = {".py", ".md", ".txt", ".bat", ".sh"}
+ROOT_EXTENSIONS = {".py", ".md", ".bat", ".sh"}
+TRACKED_START_NOTES = {"README_V7_START_HERE.txt", "README_V8_START_HERE.txt", "README_V9_START_HERE.txt"}
 PREFIX = "SmartQuote_V10/"
 
 
 def source_files(root=ROOT):
     root = Path(root)
     files = [p for p in root.iterdir()
-             if p.is_file() and (p.suffix.lower() in ROOT_EXTENSIONS or p.name == "requirements.txt")]
+             if p.is_file() and (p.suffix.lower() in ROOT_EXTENSIONS or p.name in TRACKED_START_NOTES)]
     for directory in ("static", "samples", "docs", "tests"):
         path = root / directory
         if path.is_dir():
