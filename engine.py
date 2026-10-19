@@ -15,6 +15,40 @@ CONFIG=json.loads((ROOT/'data/configs.json').read_text())
 LEGACY=json.loads((ROOT/'data/legacy.json').read_text())
 PRICING=json.loads((ROOT/'data/pricing.json').read_text())
 HISTORIC_MASTER=json.loads((ROOT/'data/2025_master_legacy_index.json').read_text())
+# V10 historical evidence never modifies live catalogue RRPs or tariffs.
+_HISTORIC_V10_PATH=ROOT/'data/historical_catalogue_index.json'
+HISTORIC_V10=json.loads(_HISTORIC_V10_PATH.read_text(encoding='utf-8')) if _HISTORIC_V10_PATH.exists() else {'records':{},'aliases':{}}
+HISTORIC_V10_RECORDS=HISTORIC_V10.get('records',{})
+HISTORIC_V10_ALIASES=HISTORIC_V10.get('aliases',{})
+HISTORIC_V10_MODELS={}
+for _history_code,_history_item in HISTORIC_V10_RECORDS.items():
+ _history_model=str(_history_item.get('model','')).strip().upper()
+ if _history_model and _history_model not in ('N/A','0'):
+  HISTORIC_V10_MODELS.setdefault(_history_model,[]).append(_history_code)
+
+def historical_identity(code='',model='',limit=8):
+ """Return recorded historical identity evidence; never approved pricing."""
+ code=str(code or '').strip().upper()
+ model=str(model or '').strip().upper()
+ direct=HISTORIC_V10_RECORDS.get(code)
+ source='Exact historical SKU' if direct else ''
+ matches=[code] if direct else []
+ if not matches and code in HISTORIC_V10_ALIASES:
+  matches=HISTORIC_V10_ALIASES[code]
+  source='Historical alias - NOT an approved replacement'
+ if not matches and (model or code) in HISTORIC_V10_MODELS:
+  matches=HISTORIC_V10_MODELS[model or code]
+  source='Model family - multiple variants may exist'
+ total=len(matches)
+ if not total:return None
+ results=[]
+ for key in matches[:limit]:
+  item=HISTORIC_V10_RECORDS.get(key,{})
+  results.append({f:item.get(f,'') for f in ('sku','name','model','console','status','year','first_seen','source')})
+ return {'lookup':code or model,'basis':source,'variant_count':total,
+         'ambiguous':total>1,'evidence_only':True,'variants':results,
+         'message':'Historical identity evidence only. No RRP, tariff or replacement approved.'}
+
 BY_SKU={p['sku'].upper():p for p in CAT}
 ALL_SKUS={}
 for _product in CAT:ALL_SKUS.setdefault(_product['sku'].upper(),[]).append(_product)
@@ -399,6 +433,9 @@ def match_asset(a):
   out['issues'].append('Equipment could not be identified. Enter the exact SKU or use manual review.')
  if out['selected']:out['issues']+=selection_issues(out['selected'])
  family_model=(model or code).split('-')[0].upper()
+ evidence=historical_identity(code,model)
+ if evidence:
+  out['historic_evidence']=evidence
  if family_model in HISTORIC_MASTER:
   meta=HISTORIC_MASTER[family_model]
   out['historic_master']={'model':family_model,'variant_rows':meta['variant_rows'],
