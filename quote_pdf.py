@@ -73,7 +73,7 @@ def create_quote_pdf(q):
  display_groups=[g for g in grouped_assets(q.get('assets',[]),costs) if not g['representative'].get('excluded')]
  includes=[a for a in q.get('assets',[]) if not a.get('excluded')]
  for i,g in enumerate(display_groups,1):
-  a=g['representative'];sel=a.get('selected') or {};cost=g['price'];label=(a.get('display_name') or sel.get('name') or a.get('name') or 'Unresolved equipment')
+  a=g['representative'];sel=a.get('selected') or {};cost=g['price'];label=(a.get('display_name') or a.get('name') or sel.get('name') or 'Unresolved equipment')
   extra=[]
   m=sel.get('model') or a.get('model')
   con=(a.get('console') or (sel.get('console_display') if sel.get('console_status') in ('source','description_only') else '')) or ''
