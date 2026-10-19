@@ -20,11 +20,24 @@ jobs:
         run: |
           python -m pip install -r requirements-test.txt
           python -m pip show fastapi starlette httpx
-      - name: Compile source
-        run: python -m compileall -q .
+      - name: Compile Python source and check UI script
+        run: |
+          python -m compileall -q .
+          node --check static/app.js
       - name: Test the historic importer without customer files
         run: python -m unittest tests/test_v10_historical_master.py -v
-      - name: Run existing application regressions
+      - name: Run existing and V10 application regressions
         env:
           SMARTQUOTE_AUTH: "off"
         run: python -m unittest discover -s tests -v
+      - name: Build verified, data-safe internal pilot archive
+        if: github.event_name != 'pull_request'
+        run: |
+          python build_v10_pilot.py --output dist/Pulse_Fitness_SmartQuote_V10_Internal_Pilot.zip
+      - name: Upload controlled internal pilot (not customer release)
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pulse-SmartQuote-V10-Internal-Pilot
+          path: dist/Pulse_Fitness_SmartQuote_V10_Internal_Pilot.zip
+          retention-days: 14
