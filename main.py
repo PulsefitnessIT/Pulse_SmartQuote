@@ -137,7 +137,7 @@ def public(q):
 @app.get('/')
 def home():return FileResponse(ROOT/'static/index.html')
 @app.get('/api/health')
-def health():return {'ok':True,'name':'Pulse Fitness SmartQuote','mode':'local controlled pilot','version':'V9','auth_setup_required':security.enabled() and security.count()==0}
+def health():return {'ok':True,'name':'Pulse Fitness SmartQuote','mode':'local controlled pilot','version':'V10 internal pilot','auth_setup_required':security.enabled() and security.count()==0}
 @app.get('/api/bootstrap')
 def bootstrap():
  return {'source':PRICING['source'],'counts':PRICING['source_counts'],'tiers':PRICING['tiers'],'packages':PACKAGES,'rates':PRICING['rates'],'mode':'Local pilot with user sign-in; not a production identity provider'}

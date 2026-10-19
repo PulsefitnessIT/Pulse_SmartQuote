@@ -16,7 +16,7 @@ RRPs, tariffs, customer records and issued PDF snapshots.
    pricing fields and does not modify `data/catalog.json` or `data/pricing.json`.
 5. Any deployed indexes are backed up under `data/historical_backups`.
    Restart SmartQuote to reload the read-only evidence.
-6. Sign in as a pricing manager / admin and open **Master Price List** to view
+6. The generated manifest does **not** certify the completeness of every annual revision.\n   A source-data owner must reconcile the files and formally record\n   `archive_review_status: Approved` in the deployment manifest after validation.\n   Until that happens, the automated production preflight remains on hold.\n7. Sign in as a pricing manager / admin and open **Master Price List** to view
    the live catalogue and commercial readiness report.
 
 ## Commercial release gating

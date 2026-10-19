@@ -23,7 +23,7 @@ class CatalogueReadinessTests(unittest.TestCase):
                 "aliases": {"R260G": ["260G-AAA"]}
             }), encoding="utf-8")
             (data / "historical_catalogue_manifest.json").write_text(json.dumps({
-                "unique_skus": 1, "alias_codes": 1,
+                "unique_skus": 1, "alias_codes": 1, "archive_review_status": "Approved",
                 "worksheets": [{"year": y, "status": "read"} for y in range(2020, 2027)]
             }), encoding="utf-8")
             provisional = evaluate(temp, {"pricing_status": "Provisional; not approved"})
@@ -32,6 +32,11 @@ class CatalogueReadinessTests(unittest.TestCase):
             self.assertFalse(provisional["automated_preflight_passes"])
             approved = evaluate(temp, {"pricing_status": "Approved"})
             self.assertTrue(approved["automated_preflight_passes"])
+            manifest_path = data / "historical_catalogue_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest.pop("archive_review_status")
+            manifest_path.write_text(json.dumps(manifest))
+            self.assertFalse(evaluate(temp, {"pricing_status": "Approved"})["historical"]["archive_ready"])
 
     def test_missing_year_mismatched_manifest_and_ambiguous_alias(self):
         with tempfile.TemporaryDirectory() as temp:

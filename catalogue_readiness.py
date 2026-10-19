@@ -50,7 +50,10 @@ def evaluate(root, pricing=None):
     pricing_status = str(pricing.get("pricing_status") or "Not recorded")
     approved = pricing_status.strip().casefold() == "approved"
     complete_years = YEARS.issubset(set(years))
-    archive_ready = bool(records) and consistent and complete_years and failures == 0
+    # A year appearing in an archive is not proof that every master revision was supplied.
+    # The importer deliberately does not assert completeness or authorised approval.
+    source_reviewed = str(manifest.get("archive_review_status") or "").strip().casefold() == "approved"
+    archive_ready = bool(records) and consistent and complete_years and failures == 0 and source_reviewed
     warnings = []
     if not index_path.is_file() or not records:
         warnings.append("Historical 2020-2026 catalogue index is not deployed.")
@@ -61,6 +64,8 @@ def evaluate(root, pricing=None):
         warnings.append("No imported source evidence for year(s): " + missing + ".")
     if failures:
         warnings.append(f"{failures} historical worksheet imports failed.")
+    if not source_reviewed:
+        warnings.append("Historical source completeness has not been signed off by an authorised data owner.")
     if ambiguous:
         warnings.append(f"{ambiguous} alias codes have multiple candidate SKUs; review each before use.")
     if not approved:
@@ -74,6 +79,8 @@ def evaluate(root, pricing=None):
             "source_years": years,
             "failed_worksheets": failures,
             "manifest_consistent": consistent,
+            "source_reviewed": source_reviewed,
+            "archive_scope": str(manifest.get("archive_scope") or "unverified"),
             "archive_ready": archive_ready,
         },
         "commercial": {
