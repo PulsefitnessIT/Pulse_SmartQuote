@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import BytesIO
 from datetime import date,timedelta
 from xml.sax.saxutils import escape
-from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle,KeepTogether
+from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,TableStyle,KeepTogether,PageBreak
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet,ParagraphStyle
 from reportlab.lib.enums import TA_LEFT,TA_RIGHT
@@ -13,6 +13,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from engine import PACKAGES,calc_quote,ROOT,money
+from asset_intelligence import grouped_assets
 
 INK=HexColor('#101813');BORDER=colors.black;MUTED=HexColor('#536166');CYAN=HexColor('#15B9E5');WHITE=colors.white;PULSE_DARK=HexColor('#07190D')
 def e(x):return escape(str(x if x is not None else ''))
@@ -69,15 +70,16 @@ def create_quote_pdf(q):
  widths=[12*mm,30*mm,74*mm,17*mm,23*mm,24*mm]
  line_items=[[P('<b>'+x+'</b>','invHead') for x in columns]]
  costs={a['id']:a['price'] for a in s['lines']}
+ display_groups=[g for g in grouped_assets(q.get('assets',[]),costs) if not g['representative'].get('excluded')]
  includes=[a for a in q.get('assets',[]) if not a.get('excluded')]
- for i,a in enumerate(includes,1):
-  sel=a.get('selected') or {};cost=costs.get(a['id']);label=(a.get('display_name') or sel.get('name') or a.get('name') or 'Unresolved equipment')
+ for i,g in enumerate(display_groups,1):
+  a=g['representative'];sel=a.get('selected') or {};cost=g['price'];label=(a.get('display_name') or sel.get('name') or a.get('name') or 'Unresolved equipment')
   extra=[]
   m=sel.get('model') or a.get('model')
   con=(a.get('console') or (sel.get('console_display') if sel.get('console_status') in ('source','description_only') else '')) or ''
   if m and not sel:extra.append('Model: '+e(m))
   if con and con not in ('Not Applicable',) and 'console' not in label.lower():extra.append('Console: '+e(con))
-  if a.get('serial'):extra.append('Serial: '+e(a['serial']))
+  if g['serials']:extra.append(('Serial: '+e(g['serials'][0])) if len(g['serials'])==1 else f"{len(g['serials'])} serials retained in attached asset schedule")
   sites={str(v.get('site','')).strip() for v in q.get('assets',[]) if str(v.get('site','')).strip()}
   if len(sites)>1 and a.get('site'):extra.append('Site: '+e(a['site']))
   if sel.get('price_origin')=='historic-family-estimate':
@@ -86,7 +88,7 @@ def create_quote_pdf(q):
    extra.append('HISTORIC RRP ONLY - update price before issuing a customer quote')
   description=P(e(label)+('<br/><font color="#536166" size="6.6">'+' · '.join(extra)+'</font>' if extra else ''),'invCell')
   sku=a.get('code') or sel.get('sku') or sel.get('model') or '—'
-  line_items.append([P(str(i),'invCell'),P(e(sku),'invCell'),description,P(str(a.get('qty',1)),'invCell'),P(gbp(cost['unit']) if cost else 'TBC','invCell'),P(gbp(cost['annual']) if cost else 'TBC','invCell')])
+  line_items.append([P(str(i),'invCell'),P(e(sku),'invCell'),description,P(str(g['qty']),'invCell'),P(gbp(cost['unit']) if cost else 'TBC','invCell'),P(gbp(cost['annual']) if cost else 'TBC','invCell')])
  if not includes:line_items.append([P('—')]*6)
  lines=Table(line_items,colWidths=widths,repeatRows=1,hAlign='LEFT')
  lines.setStyle(TableStyle([('BOX',(0,0),(-1,0),.7,BORDER),('LINEBELOW',(0,0),(-1,0),.7,BORDER),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,0),6),('BOTTOMPADDING',(0,0),(-1,0),6),('TOPPADDING',(0,1),(-1,-1),3),('BOTTOMPADDING',(0,1),(-1,-1),4),('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),('LINEBELOW',(0,1),(-1,-1),.25,HexColor('#DDDDDD'))]))
@@ -119,6 +121,19 @@ def create_quote_pdf(q):
  story.append(KeepTogether(notes))
  story.append(Spacer(1,2*mm))
  story.append(P('<b>Prepared by:</b> '+e(q.get('prepared_by') or 'Pulse Fitness Aftersales')+' &nbsp;&nbsp; | &nbsp;&nbsp; <b>For enquiries:</b> +44 (0)1260 294600 · info@pulsefitness.com','invMuted'))
+ # A separate technical asset schedule retains every imported serial, source row,
+ # original description and identification. It never inflates the quote lines.
+ if any(len(g['assets'])>1 for g in display_groups):
+  story.append(PageBreak());story.append(P('<b>Equipment asset schedule — source detail</b>','invHead'))
+  story.append(P('The quotation groups identical equipment for readability. Every original machine below remains individually traceable; the schedule is part of this draft.','invSmall'))
+  for line_no,g in enumerate(display_groups,1):
+   a=g['representative'];story.append(P('<b>Line '+str(line_no)+' · '+e(a.get('name') or a.get('model') or a.get('code') or 'Unidentified')+' · '+str(g['qty'])+' units</b>','invSmall'))
+   rows=[[P('<b>Sheet / row</b>','invHead'),P('<b>Asset ID</b>','invHead'),P('<b>Serial number</b>','invHead'),P('<b>Original description / install date</b>','invHead')]]
+   for detail in g['assets']:
+    rows.append([P(e(str(detail.get('source_sheet') or '')+' / '+str(detail.get('source_row') or '')),'invSmall'),P(e(detail.get('asset_tag') or '—'),'invSmall'),P(e(detail.get('serial') or '—'),'invSmall'),P(e(detail.get('source_description') or '—')+(' · Installed '+e(detail.get('install_date')) if detail.get('install_date') else ''),'invSmall')])
+   tab=Table(rows,colWidths=[30*mm,23*mm,39*mm,88*mm],repeatRows=1,hAlign='LEFT')
+   tab.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,0),.4,BORDER),('LINEBELOW',(0,1),(-1,-1),.2,HexColor('#DDDDDD')),('BOTTOMPADDING',(0,0),(-1,-1),3),('TOPPADDING',(0,0),(-1,-1),3)]))
+   story.append(tab);story.append(Spacer(1,2*mm))
 
  def headerfooter(c,doc):
   c.saveState();w,h=A4

@@ -7,6 +7,7 @@ import engine as eng
 import catalogue_admin as admin
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
+from asset_intelligence import grouped_assets
 from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
@@ -132,7 +133,9 @@ def public(q):
    if isinstance(candidate,dict):decorate_option(candidate)
   if not asset.get('selected') and not asset.get('candidates') and asset.get('name'):
    asset['candidates']=suggest_unknown(asset)
- return {'quote':q,'summary':calc_quote(q)}
+ summary=calc_quote(q)
+ grouped=grouped_assets(q.get('assets',[]),{line['id']:line.get('price') for line in summary['lines']})
+ return {'quote':q,'summary':summary,'display_groups':grouped}
 
 @app.get('/')
 def home():return FileResponse(ROOT/'static/index.html')
@@ -170,7 +173,7 @@ async def upload(id:str,request:Request):
  q['warnings']+=parsed['warnings']
  q['files'].append({'filename':filename,'sheets':parsed['sheets'],'imported':len(parsed['assets']),'at':datetime.datetime.now().isoformat(timespec='seconds')})
  q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
- persist(q);record_event(id,actor(request)['username'],'ASSET_IMPORT',f"File {filename}, {len(parsed['assets'])} machine rows");return {**public(q),'import_report':{'files':parsed['sheets'],'warnings':parsed['warnings'],'added':len(parsed['assets'])}}
+ persist(q);record_event(id,actor(request)['username'],'ASSET_IMPORT',f"File {filename}, {len(parsed['assets'])} machine rows");return {**public(q),'import_report':{'files':parsed['sheets'],'warnings':parsed['warnings'],'added':len(parsed['assets']),'grouped_lines':len(grouped_assets(q['assets']))}}
 @app.post('/api/quotes/{id}/agreement-import')
 async def import_agreement(id:str,request:Request):
     q=getq(id);payload=await request.json();filename=str(payload.get('filename',''))
@@ -348,7 +351,7 @@ def catalog_search(q:str='',limit:int=20):
             if option.get('duplicate_sku') else
             'Calculated maintenance estimate — confirm category and eligibility' if option.get('price_origin')=='calculated-estimate'
             else 'Mapped maintenance rate — subject to source price approval')
-    return {'results':results,'basis':'Monthly equipment cost, 12-month equivalent, workbook standard tariff, pre-discount, ex VAT. Calculated estimates are shown and can be quoted without a separate review step.'}
+    return {'results':results,'historical':eng.search_historical(q,limit=12),'basis':'Monthly equipment cost, 12-month equivalent, workbook standard tariff, pre-discount, ex VAT. Calculated estimates are shown and can be quoted without a separate review step.'}
 @app.post('/api/quotes/{id}/approve')
 async def legacy_approval(id:str,request:Request):
  # Removed in V5: no manual review step is needed to quote a valid, priced machine.

@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import Counter
 from functools import lru_cache
 from renewal_pricing import family_reference
+from asset_intelligence import normalize_asset, grouped_assets
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -48,6 +49,32 @@ def historical_identity(code='',model='',limit=8):
  return {'lookup':code or model,'basis':source,'variant_count':total,
          'ambiguous':total>1,'evidence_only':True,'variants':results,
          'message':'Historical identity evidence only. No RRP, tariff or replacement approved.'}
+
+def search_historical(query,limit=12):
+ """Fuzzy historical identity discovery without promoting unapproved RRPs."""
+ term=upper(query)
+ if len(term)<2:return {'results':[],'total':0,'evidence_only':True}
+ direct=historical_identity(term,limit=limit)
+ if direct:
+  return {'results':direct['variants'],'total':direct['variant_count'],
+          'basis':direct['basis'],'evidence_only':True,'ambiguous':direct['ambiguous']}
+ match=descslug(term)
+ ranked=[]
+ for sku,item in HISTORIC_V10_RECORDS.items():
+  code=upper(sku);model=upper(item.get('model',''))
+  description=descslug(item.get('name',''))
+  if term in code:score=500 if code.startswith(term) else 350
+  elif model==term:score=450
+  elif match and match in description:score=200+min(50,len(match))
+  else:continue
+  ranked.append((score,sku,item))
+ ranked.sort(key=lambda x:(-x[0],x[1]))
+ result=[{field:item.get(field,'') for field in ('sku','model','name','console','year','first_seen','source','status')}
+         for _,_,item in ranked[:limit]]
+ return {'results':result,'total':len(ranked),
+         'basis':'Historical catalogue search — identity only, unapproved for pricing',
+         'evidence_only':True,'ambiguous':False}
+
 
 BY_SKU={p['sku'].upper():p for p in CAT}
 ALL_SKUS={}
@@ -146,6 +173,8 @@ HEADERS={
  'site':['site name','site','facility'],
  'location':['location','site location','facility location'],
  'note':['notes','repair','status','warranty','remarks'],
+ 'install_date':['install date','installation date','date installed'],
+ 'correct_serial':['correct serial number','correct serial','verified serial number'],
 }
 def normalized_header(s):return descslug(str(s).replace('\n',' '))
 def head_key(s):
@@ -204,7 +233,8 @@ def ingest(name:str,content:bytes):
     site=(site_status.removeprefix('Relocated to ').strip() if re.match(r'(?i)^relocated to\s+',site_status) else
           location if site_status.lower() in ('n/a','na','-') or 'warranty' in site_status.lower() or 'agreement' in site_status.lower() else site_status)
    else:site=location or site_status
-   assets.append({'id':f'a{len(assets)+1:04d}','source_sheet':sheet,'source_row':r.get('_rownum',ix),'code':val.get('code',''), 'model':val.get('code','') or val.get('model',''), 'name':val.get('name',''), 'make':val.get('make',''), 'console':val.get('console',''), 'serial':val.get('serial',''),'site':site, 'source_location':location, 'site_status':site_status,'source_note':val.get('note',''), 'qty':quantity,'original_qty':rawqty,'qty_issue':quantity_issue})
+   assets.append(normalize_asset({'id':f'a{len(assets)+1:04d}','source_sheet':sheet,'source_row':r.get('_rownum',ix),'code':val.get('code',''), 'model':val.get('code','') or val.get('model',''), 'name':val.get('name',''), 'make':val.get('make',''), 'console':val.get('console',''), 'serial':val.get('serial',''),'site':site, 'source_location':location, 'site_status':site_status,'source_note':val.get('note',''), 'qty':quantity,'original_qty':rawqty,'qty_issue':quantity_issue,'install_date':val.get('install_date',''),
+                    'correct_serial':val.get('correct_serial','')}))
   meta.append({'sheet':sheet,'rows':len(records),'added':len(assets)-start_added,'detected':True,'columns':list(h)})
  if not assets:raise ValueError('No usable equipment rows were detected. Check the spreadsheet headings and select the correct sheet.')
  return {'file':name,'assets':assets,'warnings':warnings,'sheets':meta}
@@ -397,7 +427,7 @@ def match_asset(a):
     if len(direct)==1:out['selected']=config_option(direct[0],'Model + console');out['match_type']='Model + console';out['match_confidence']=83
    # A genuinely unique legacy model can be mapped safely when its name also agrees,
    # but never when the prior agreement mentions a different/unverified console.
-   if not out['selected'] and len(opts)==1 and not console and desc and score_name(desc,opts[0])>=.65:
+   if not out['selected'] and len(opts)==1 and not console and desc and (score_name(desc,opts[0])>=.65 or (model and descslug(desc)==descslug(model) and len([p for p in CAT if upper(p.get('model'))==model])==1)):
     out['selected']=config_option(opts[0],'Unique model and description match')
     out['match_type']='Unique model configuration';out['match_confidence']=88
    if not out['selected']:
