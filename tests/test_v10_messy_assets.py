@@ -35,6 +35,7 @@ class MessyAssetTests(unittest.TestCase):
         assets = imported['assets']
         self.assertEqual(len(assets), 8)
         self.assertEqual(assets[0]['asset_tag'], 'PF00108')
+        self.assertEqual(assets[0]['site'], 'Demo Club')
         self.assertEqual(assets[0]['model'], '260G')
         self.assertFalse(assets[0]['code'])
         self.assertEqual(assets[0]['source_cells']['name'],
