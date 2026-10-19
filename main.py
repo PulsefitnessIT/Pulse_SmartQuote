@@ -384,6 +384,13 @@ async def add_manual(id:str,request:Request):
 
 # V4: catalogue management. This local pilot has no identity authentication;
 # edits and inferred pricing must not be treated as formal company approval.
+@app.get('/api/catalog/history/{identifier:path}')
+def historical_catalogue_lookup(identifier:str):
+    if not identifier or len(identifier)>80:raise HTTPException(400,'Enter a short equipment code or model.')
+    result=eng.historical_identity(identifier)
+    return result or {'lookup':identifier,'variant_count':0,'evidence_only':True,'variants':[],
+                      'message':'No corresponding historical master identity found; do not infer an RRP.'}
+
 @app.get('/api/catalog/admin/info')
 def catalog_info():
     entries=len(CAT);dupes=len(DUPLICATE_CODES)
