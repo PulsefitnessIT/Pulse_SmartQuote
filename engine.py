@@ -200,6 +200,17 @@ def ingest(name:str,content:bytes):
    if weight>=3:opts.append((weight,ix,h))
   if opts:
    _,start,h=sorted(opts,reverse=True)[0]
+   # CRM exports often have a repeated site column named 'Name' and a separate
+   # machine 'Description'. Keep the first as site only when values repeat.
+   header=records[start]
+   named=[c for c,v in header.items() if isinstance(c,int) and head_key(v)=='name']
+   if len(named)>1:
+    first=named[0]
+    first_vals=[neat(row.get(first,'')) for row in records[start+1:start+9]]
+    populated=[v for v in first_vals if v]
+    if populated and len(set(populated))<=2 and any('description' in normalized_header(header.get(c,'')) for c in named[1:]):
+     h['site']=first
+     h['name']=named[-1]
    mode='Detected column headings'
   else:
    # Do not guess which column is a price, model or serial on an unstructured sheet.
