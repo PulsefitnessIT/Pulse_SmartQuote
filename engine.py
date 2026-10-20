@@ -607,7 +607,7 @@ def calc_quote(q):
  if tier not in PRICING['tiers']:tier='Gold'
  discount=max(0,min(100,discount))
  term=max(1,min(5,int(q.get('term') or 1)))
- summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[],'pricing_exceptions':[],'source_rrp_reconciled_rows':0}
+ summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[],'pricing_exceptions':[],'source_rrp_reconciled_rows':0,'automatic_rrp_rows':0,'tariff_approval_required':False}
  rows=q.get('assets',[]);summary['rows']=len(rows)
  for a in rows:
   if a.get('excluded'):
@@ -624,7 +624,8 @@ def calc_quote(q):
   # Keep the installed SKU, source invoice, original live catalogue and PDFs intact.
   # Reprice ONLY the draft invoice line; commercial approval is still required.
   if (price and a.get('invoice_ref') and a.get('manual_annual_unit') in (None,'')
-      and a.get('match_type')!='Conflicting duplicate SKU' and price.get('rrp')):
+      and a.get('match_type')!='Conflicting duplicate SKU' and price.get('rrp')
+      and (a.get('selected') or {}).get('eligible')!='No'):
    current=source_sku_reference(a)
    if current and abs(float(price['rrp'])-current['rrp'])>.009:
     chosen=a.get('selected') or {}
@@ -633,9 +634,17 @@ def calc_quote(q):
          'pricing_rule':'2026 source RRP differs from live catalogue; pricing manager reconciliation required'}
     refreshed=price_line({**a,'selected':temporary},level,tier,discount)
     if refreshed:
+     # The code/spec RRP is already identified: staff should not need to
+     # re-select the machine just because the older live register has a
+     # different RRP. The mismatch remains visible to commercial staff.
+     stable_rate=RATES.get(temporary['rate_group'],{})
+     automatic=stable_rate.get('status')=='Active' and temporary['rate_group'] in (
+         'Standard Equipment','Treadmill / Elliptical')
      refreshed.update({'reference_sku':current['reference_sku'],
-        'preview_confidence':'source_rrp_mismatch','review_required':True,
-        'previous_catalogue_rrp':price['rrp']})
+        'preview_confidence':'source_rrp_reconciled' if automatic else 'source_rrp_mismatch',
+        'review_required':not automatic,'previous_catalogue_rrp':price['rrp'],
+        'rrp_source':current['source'],'tariff_status':'pending-commercial-approval'})
+     if automatic:refreshed['basis']='source-rrp-calculated'
      price=refreshed
   # A distinctive imported 2026 source configuration, or an explicitly
   # permitted model-AAA strength baseline, can provide a numerical DRAFT
@@ -644,7 +653,7 @@ def calc_quote(q):
    reference=staff_draft_reference(a)
    if reference:
     name=' '.join((str(a.get('name') or ''),str(a.get('code') or ''),str(a.get('model') or ''))).lower()
-    rate_group=('Treadmill / Elliptical' if ('treadmill' in name or 'elliptical' in name or 'cross-trainer' in name) else 'Standard Equipment')
+    rate_group,_,_=infer_rate_group(a)
     temporary={'model':reference['model'],'sku':'','name':a.get('name',''),
        'rrp':reference['rrp'],'console':'Console not confirmed',
        'rate_group':rate_group,'eligible':'Estimate - approval required',
@@ -655,11 +664,21 @@ def calc_quote(q):
     if price:
      price['reference_sku']=reference['reference_sku']
      price['preview_confidence']=reference['confidence']
-     price['review_required']=True
+     automatic=(reference['confidence']=='exact_source_sku'
+        and RATES.get(rate_group,{}).get('status')=='Active'
+        and rate_group in ('Standard Equipment','Treadmill / Elliptical'))
+     # Unique code + corroborating product/console = routine calculation.
+     # Legacy family assumptions and alternative configurations remain reviews.
+     price['review_required']=not automatic
+     if automatic:price['basis']='source-rrp-calculated'
+     price['rrp_source']=reference.get('source','')
+     price['tariff_status']='pending-commercial-approval'
   if price:
    summary['annual']+=price['annual'];summary['priced_rows']+=1
-   if price.get('preview_confidence')=='source_rrp_mismatch':
+   if price.get('previous_catalogue_rrp') is not None:
     summary['source_rrp_reconciled_rows']+=1
+   if price.get('basis')=='source-rrp-calculated':
+    summary['automatic_rrp_rows']+=1
   else:
    sku=upper(a.get('code') or a.get('model'))
    if a.get('qty_issue'):
@@ -681,6 +700,13 @@ def calc_quote(q):
     summary['issues'].append(f"Row {a.get('source_row','?')}: enter a source/reference for the manual rate")
    if not neat(a.get('name') or a.get('display_name')) or not (neat(a.get('code')) or neat(a.get('model'))):
     summary['issues'].append(f"Row {a.get('source_row','?')}: manual rate needs a description and code/model")
+  elif price and price.get('basis')=='source-rrp-calculated':
+   # No repetitive per-machine confirmation for a unique current source SKU.
+   # Tariffs are not approved by this calculation; one quote-level gate below.
+   if price.get('previous_catalogue_rrp') is not None:
+    summary['advisories'].append(
+      f"Row {a.get('source_row','?')}: current source RRP for {a.get('code')} supersedes "
+      f"older register RRP £{price['previous_catalogue_rrp']:,.2f}; master reconciliation remains outstanding.")
   elif price and price.get('basis')=='staff-guided-estimate':
    summary['estimated_rows']+=1
    summary['issues'].append(f"Row {a.get('source_row','?')}: provisional family RRP/console guide only; verify exact configuration, rate and RRP before issuing.")
@@ -715,6 +741,13 @@ def calc_quote(q):
   summary['lines'].append({'id':a.get('id'),'price':price,'guide':preview_guide,'issues':a.get('issues',[]),
    'pricing_exception':next((x['reason'] for x in summary['pricing_exceptions'] if x['id']==a.get('id')),None)})
  summary['annual']=money(summary['annual']);summary['monthly']=money(summary['annual']/12);summary['term_total']=money(summary['annual']*term)
+ # One commercial control for all routine RRP calculations, not a button
+ # press on every correctly identified machine. No false tariff sign-off.
+ if summary['automatic_rrp_rows'] and str(PRICING.get('pricing_status','')).lower().startswith('provisional'):
+  summary['tariff_approval_required']=True
+  summary['issues'].append(
+   f"Commercial tariff sign-off required for {summary['automatic_rrp_rows']} automatically "
+   "calculated RRP equipment lines; no machine-by-machine re-selection needed.")
  if not neat(q.get('customer')) or not neat(q.get('site')):summary['issues'].append('Enter the customer and site.')
  visits=int(q.get('visits',1))
  if tier=='Silver' and visits!=0:summary['issues'].append('Silver does not include planned maintenance; select 0 PPM visits.')

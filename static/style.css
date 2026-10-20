@@ -259,3 +259,6 @@ button:disabled{cursor:not-allowed;opacity:.6}
 .pricing-coverage>small{display:block;margin-top:5px;color:#738390}
 .pricing-coverage .coverage-exceptions{display:grid;gap:5px;padding:7px 0 3px}
 .pricing-coverage .coverage-exceptions span{color:#913e28}
+
+/* Exact-source RRP auto-prices need no per-line coordinator action. */
+.status.ok{font-weight:750}

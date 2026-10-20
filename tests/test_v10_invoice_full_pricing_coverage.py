@@ -35,6 +35,9 @@ class CompleteInvoicePricing(unittest.TestCase):
   summary=engine.calc_quote(quote(items))
   self.assertEqual(summary['priced_rows'],39)
   self.assertGreaterEqual(summary['source_rrp_reconciled_rows'],20)
+  self.assertGreaterEqual(summary['automatic_rrp_rows'],20)
+  self.assertTrue(summary['tariff_approval_required'])
+  self.assertEqual(sum('Commercial tariff sign-off required' in s for s in summary['issues']),1)
   self.assertEqual({x['code'] for x in summary['pricing_exceptions']},{'200C-AAB','SC240MA-AAA'})
   missing={x['id'] for x in summary['pricing_exceptions']}
   for item,line in zip(items,summary['lines']):
@@ -47,6 +50,8 @@ class CompleteInvoicePricing(unittest.TestCase):
   result=engine.calc_quote(quote([item]))
   self.assertEqual(result['lines'][0]['price']['annual'],1435.77)
   self.assertFalse(result['ready'])
+  self.assertEqual(result['lines'][0]['price']['basis'],'source-rrp-calculated')
+  self.assertFalse(result['lines'][0]['price']['review_required'])
  def test_historical_sale_value_must_not_be_used_as_rrp(self):
   item=equipment('200C-AAB',1);item['invoice_unit_sale_price']='10072.43'
   result=engine.calc_quote(quote([item]))
@@ -57,5 +62,24 @@ class CompleteInvoicePricing(unittest.TestCase):
   item['name']=item['source_description']='Shoulder Press with 7" tactile key console'
   self.assertIsNone(source_sku_reference(item))
   self.assertTrue(engine.calc_quote(quote([item]))['pricing_exceptions'])
+
+ def test_known_strength_console_skus_are_auto_priced_without_line_approvals(self):
+  for code in ('305H-AEP','310H-AEP','325H-ACL','342H-AAO','382H-ACL',
+               '447H-AEP','560H-AEP','562H-AEP'):
+   with self.subTest(code=code):
+    a=equipment(code,1);s=engine.calc_quote(quote([a]))
+    price=s['lines'][0]['price']
+    self.assertIsNotNone(price)
+    self.assertEqual(price['basis'],'source-rrp-calculated')
+    self.assertFalse(price['review_required'])
+    self.assertEqual(s['automatic_rrp_rows'],1)
+    self.assertTrue(s['tariff_approval_required'])
+    self.assertEqual(len([x for x in s['issues'] if 'Commercial tariff sign-off required' in x]),1)
+    self.assertFalse(s['ready'])
+ def test_legacy_pec_deck_equivalent_is_still_configuration_review(self):
+  a=equipment('314H-AEP',1);s=engine.calc_quote(quote([a]))
+  self.assertEqual(s['lines'][0]['price']['basis'],'staff-guided-estimate')
+  self.assertTrue(s['lines'][0]['price']['review_required'])
+  self.assertEqual(s['automatic_rrp_rows'],0)
 
 if __name__=='__main__':unittest.main()
