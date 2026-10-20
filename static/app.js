@@ -80,6 +80,16 @@ function bindAssetSort(){
   button.parentElement.setAttribute('aria-sort',active?(state.sort.direction==='asc'?'ascending':'descending'):'none');
  });
 }
+function compactMachineDescription(value){
+ const full=String(value||'').replace(/\s+/g,' ').trim();
+ if(full.length<90)return full;
+ const spec=full.match(/\b(?:1\s*x\s*\d+\s*kg|\d+\s*kg weight stack|weight stack tower)\b/i);
+ if(!spec||spec.index<20)return full;
+ const name=full.slice(0,spec.index).trim().replace(/\s+(?:with|in)$/i,'');
+ const screen=full.match(/(?:10\.1|18\.5|7)(?:["″]|-?inch)[^,;]{0,48}?(?:touchscreen|touch screen|tactile key)/i);
+ const console=screen?screen[0].replace(/\s+/g,' ').replace(/.*?(10\.1|18\.5|7)/,'$1').replace(/\bconsole\b/gi,'').trim():'';
+ return (name+(console?' · '+console:'')).slice(0,135);
+}
 function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').textContent=q.quote_no;$('summaryCode').textContent=q.quote_no;$('pipelineStatus').value=q.pipeline_status||'Draft';$('pipelineNote').value=q.pipeline_note||'';
  ['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{if($(k))$(k).value=(k==='valid_days'?q[k]??30:q[k]??'')});
  $('tierOptions').innerHTML=Object.entries(state.bootstrap.packages).map(([tier,p])=>`<button class="tier-card ${q.tier===tier?'active':''}" data-tier="${tier}"><span>${tier==='Silver'?'ESSENTIAL':tier==='Gold'?'RECOMMENDED':'COMPREHENSIVE'}</span><strong>${esc(tier)}</strong><small>${esc(p.subtitle)}</small></button>`).join('');
@@ -111,10 +121,11 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
   const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='staff-guided-estimate'||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
   const identifier=a.code||a.model||selected?.model||'Model not supplied';
   const name=a.display_name||a.name||selected?.name||'Equipment description not supplied';
+  const visibleName=compactMachineDescription(name);
   const serials=(g.serials||[]).filter(Boolean);
   const serialText=serials.length?serials.join(', '):'Not provided';
   const shortPrice=a.excluded?'—':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.unit/12):money(pr.unit/12)):guide?`Guide ${guideText}`:'TBC';
-  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b>${esc(name)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='staff-guided-estimate'?'Source RRP · tariff provisional':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
+  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b title="${esc(name)}">${esc(visibleName)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='staff-guided-estimate'?'Source RRP · tariff provisional':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
  }).join(''):'<tr><td colspan="6" class="empty-table">'+(state.filter==='issues'?'All included equipment has a price. Choose All equipment or generate your PDF.':'Drop in an asset list or try the sample import to begin.')+'</td></tr>';
  document.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>review(b.dataset.review));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeAsset(b.dataset.delete));
  let matched=q.assets.filter(a=>a.selected&&!a.excluded).length,excluded=q.assets.filter(a=>a.excluded).length;
@@ -201,20 +212,52 @@ function removeStagedUpload(id){
  if(invoicePending && invoicePending.queueEntryIds && invoicePending.queueEntryIds.includes(id))invoiceReviewClear();
  renderStagedUploads();
 }
-function stageUploadFiles(inputFiles){
+async function identifyStagedUpload(entry){
+ try{
+  // Content classification changes no quotation data, and never commits imports.
+  if(entry.file.size>70*1024*1024)throw new Error('File exceeds 70 MB detection limit');
+  const bytes=new Uint8Array(await entry.file.arrayBuffer());let binary='';
+  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  const detected=await api('/api/documents/detect',{method:'POST',body:JSON.stringify({filename:entry.file.name,content_base64:btoa(binary)})});
+  if(!stagedUploads.includes(entry))return;
+  entry.detectedReason=detected.reason||'';
+  if(!entry.userChosenKind){
+   entry.kind=uploadTypesFor(entry.file).some(x=>x[0]===detected.kind)?detected.kind:'';
+   entry.detected=!!entry.kind&&detected.confidence==='high';
+  }
+ }catch(error){
+  if(stagedUploads.includes(entry)){
+   entry.detectedReason='Could not identify automatically. Please choose the file type.';
+   if(!entry.userChosenKind)entry.kind='';
+  }
+ }finally{
+  entry.detecting=false;
+  if(stagedUploads.includes(entry))renderStagedUploads();
+ }
+}
+async function stageUploadFiles(inputFiles){
  const incoming=Array.from(inputFiles||[]);
- let added=0, skipped=0;
+ let skipped=0;const added=[];
  for(const file of incoming){
   if(!uploadTypesFor(file).length){skipped++;continue;}
-  if(stagedUploads.some(item=>item.file.name===file.name && item.file.size===file.size && item.file.lastModified===file.lastModified)){
+  if(stagedUploads.some(item=>item.file.name===file.name&&item.file.size===file.size&&item.file.lastModified===file.lastModified)){
    skipped++;continue;
   }
-  stagedUploads.push({id:nextStagedUploadId++,file,kind:suggestedUploadType(file)});
-  added++;
+  const entry={id:nextStagedUploadId++,file,kind:'',detected:false,detecting:true,userChosenKind:false,detectedReason:''};
+  stagedUploads.push(entry);added.push(entry);
  }
- if(skipped)toast(skipped+' unsupported or already queued file(s) were skipped.',true);
- if(added)renderStagedUploads();
+ if(skipped)toast(skipped+' unsupported or already queued file(s) skipped.',true);
+ renderStagedUploads();
+ if(!added.length)return;
+ await Promise.all(added.map(identifyStagedUpload));
+ // One known asset list or a same-site invoice group goes straight to PREVIEW.
+ // No file is automatically imported. Agreements and historic calculations use
+ // direct-write APIs and must retain their explicit Review click.
+ if(stagedUploads.length!==added.length||added.some(x=>!stagedUploads.includes(x)||!x.detected||x.userChosenKind))return;
+ if(added.every(x=>x.kind==='invoice')){reviewStagedInvoices();return;}
+ if(added.length===1&&added[0].kind==='assets')reviewStagedUpload(added[0].id);
 }
+
 function renderStagedUploads(){
  const queue=$('uploadQueue'),items=$('uploadQueueItems');
  queue.classList.toggle('hidden',!stagedUploads.length);
@@ -225,16 +268,18 @@ function renderStagedUploads(){
   const info=document.createElement('div');info.className='upload-queue-file';
   const name=document.createElement('strong');name.textContent=entry.file.name;name.title=entry.file.name;
   const size=document.createElement('small');size.textContent=(entry.file.size/1024/1024).toFixed(2)+' MB';
-  info.append(name,size);
+  const detected=document.createElement('small');detected.textContent=entry.detecting?'Recognising document…':(entry.detectedReason||'Select a document type');
+  info.append(name,size,detected);
   const label=document.createElement('label');label.className='upload-queue-type';
   const caption=document.createElement('span');caption.textContent='Document type';
   const select=document.createElement('select');select.setAttribute('aria-label','Document type for '+entry.file.name);
   const choices=uploadTypesFor(entry.file);
-  if(!entry.kind){const option=document.createElement('option');option.value='';option.textContent='Choose a document type';select.append(option);}
+  if(!entry.kind){const option=document.createElement('option');option.value='';option.textContent=entry.detecting?'Recognising…':'Choose a document type';select.append(option);}
+  select.disabled=entry.detecting;
   for(const [value,title] of choices){const option=document.createElement('option');option.value=value;option.textContent=title;select.append(option);}
   select.value=entry.kind;
   select.onchange=()=>{
-   entry.kind=select.value;
+   entry.kind=select.value;entry.detected=false;entry.userChosenKind=true;entry.detectedReason='Type selected by staff';
    if(invoicePending && invoicePending.queueEntryIds && invoicePending.queueEntryIds.includes(entry.id))invoiceReviewClear();
    renderStagedUploads();
   };
@@ -242,7 +287,7 @@ function renderStagedUploads(){
   const actions=document.createElement('div');actions.className='upload-queue-row-actions';
   if(entry.kind!=='invoice'){
    const review=document.createElement('button');review.type='button';review.className='secondary-btn';
-   review.textContent='Review';review.disabled=!entry.kind;
+   review.textContent='Review';review.disabled=!entry.kind||entry.detecting;
    review.onclick=()=>reviewStagedUpload(entry.id);actions.append(review);
   }else{
    const note=document.createElement('small');note.textContent='Included in invoice review';actions.append(note);

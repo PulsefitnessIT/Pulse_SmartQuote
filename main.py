@@ -25,6 +25,7 @@ from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection
 from quote_pdf import create_quote_pdf
 from agreement_import import read_agreement_pdf
 from invoice_import import read_invoice_pdf, PLACEHOLDER_SERIALS
+from document_classifier import classify_document
 
 app=FastAPI(title='Pulse Fitness SmartQuote',version='0.10.0',docs_url=None,redoc_url=None)
 
@@ -255,6 +256,21 @@ def undo_last_asset_import(id:str,request:Request):
  record_event(id,actor(request)['username'],'ASSET_IMPORT_UNDONE',
               f"Removed {len(chosen)} rows from last import {latest['filename']} ({batch[:8]})")
  return {**result,'undone_rows':len(chosen),'filename':latest['filename']}
+
+@app.post('/api/documents/detect')
+async def detect_upload_document(request:Request):
+    """Identify a selected file, without importing or changing any quotation."""
+    payload=await request.json()
+    if not isinstance(payload,dict):raise HTTPException(400,'Provide a file to identify.')
+    filename=str(payload.get('filename') or '')[:260]
+    encoded=payload.get('content_base64')
+    if not filename or not isinstance(encoded,str) or len(encoded)>96*1024*1024:
+        raise HTTPException(400,'Document name or contents missing, or file exceeds intake limit.')
+    try:raw=base64.b64decode(encoded,validate=True)
+    except Exception:raise HTTPException(400,'Document contents could not be decoded.')
+    if not raw or len(raw)>70*1024*1024:raise HTTPException(413,'Document exceeds 70 MB classification limit.')
+    return classify_document(filename,raw)
+
 
 def _invoice_payload(payload):
     if not isinstance(payload,dict):
