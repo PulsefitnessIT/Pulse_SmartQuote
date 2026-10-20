@@ -262,3 +262,6 @@ button:disabled{cursor:not-allowed;opacity:.6}
 
 /* Exact-source RRP auto-prices need no per-line coordinator action. */
 .status.ok{font-weight:750}
+
+/* Neutral, transparent status: calculated from a dated RRP, not commercially approved. */
+.status.rrp-calculated{background:#eaf4fb;color:#245b80;border-color:#cce3f0}

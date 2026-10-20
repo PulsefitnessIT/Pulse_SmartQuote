@@ -126,7 +126,7 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
   const guide=guideRow?.guide;
   const guideText=guide?guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit):money(guide.min_monthly_unit)+'–'+money(guide.max_monthly_unit):'';
   const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'RRP review':pr.basis==='source-rrp-calculated'?'RRP calculated':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
-  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':(pr.review_required===true)||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
+  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='source-rrp-calculated'?'rrp-calculated':(pr.review_required===true)||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
   const identifier=a.code||a.model||selected?.model||'Model not supplied';
   const name=a.display_name||a.name||selected?.name||'Equipment description not supplied';
   const visibleName=compactMachineDescription(name);
