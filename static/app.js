@@ -3,6 +3,8 @@ let state={quote:null,summary:null,bootstrap:null,view:'builder',filter:'all',gr
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'£'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
 const toast=(message,error=false)=>{const t=$('toast');t.innerText=message;t.className='toast'+(error?' error':'');setTimeout(()=>{t.className='toast hidden'},5000)};
+let saveQueue=Promise.resolve();
+function saveMessage(message,bad=false){const el=$('saveStatus');if(el){el.textContent=message;el.className=bad?'save-failed':''}}
 async function api(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(state.token?{'Authorization':'Bearer '+state.token}:{}),...(options.headers||{})}});let data;try{data=await r.json()}catch(e){data={detail:`Server error (${r.status})`}}if(!r.ok)throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data}
 async function init(){
  $('loginForm').onsubmit=async e=>{e.preventDefault();try{
@@ -33,6 +35,7 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  $('sumAnnualLabel').textContent=s.priced_rows<s.rows-s.excluded_rows?'PARTIAL subtotal (unpriced machines excluded)':'Proposed annual maintenance';
  $('annual').textContent=money(s.annual);$('monthly').textContent=money(s.monthly);$('termTotal').textContent=money(s.term_total);$('sumTier').textContent=q.tier;$('sumUnits').textContent=s.units;$('sumLines').textContent=`${s.priced_rows} / ${s.rows}`;$('sumTerm').textContent=s.term+' year'+(s.term>1?'s':'');$('assetCount').textContent=s.rows;
  $('uploadedText').textContent=q.files.length?`${q.files.length} file(s) imported`:'No files uploaded yet';
+ $('undoLastImport').classList.toggle('hidden',!q.files.at(-1)?.batch_id);
  const oldCalc=q.historic_calcs||null;const comp=$('oldCalcBanner');if(comp){comp.classList.toggle('hidden',!oldCalc);if(oldCalc){comp.innerHTML=`<b>Previous calculations:</b> ${esc(oldCalc.filename)} · ${oldCalc.line_count} lines / ${oldCalc.machine_count} machines · historic equipment total ${money(oldCalc.source_line_sum)} · historic annual contract ${money(oldCalc.previous_quote_annual)}.<br><small>New catalogue-priced quotation: ${money(s.annual)} / year ex VAT${s.issues.length?' · DRAFT, outstanding current-RRP/contract checks':''}. Historical prices are for audit and comparison, never automatic approved 2026 RRPs.</small>`;}}
  const renewal=q.renewal||null;const rb=$('renewalBanner');rb.classList.toggle('hidden',!renewal);
  if(renewal){rb.innerHTML=`<b>Renewal imported:</b> ${esc(renewal.agreement_ref||'Previous agreement')} · ${esc(renewal.previous_package||'')} cover · Previous annual charge ${esc(renewal.previous_annual||'unknown')} · Ends ${esc(renewal.previous_end||'unknown')}.<br><small>Equipment is priced afresh using today's SmartQuote catalogue; the old total is a comparison only.</small>${renewal.fixed_price_extension?'<div class="contract-issue">Important: the previous agreement offers an extension at the SAME annual price. Check whether the customer is entitled to exercise this option before proposing different pricing.</div><label><input type="checkbox" id="renewalOptionChecked" '+(q.renewal_option_checked?'checked':'')+'> I have checked the existing fixed-price extension option and confirmed how to proceed.</label>':''}`;const checkbox=$('renewalOptionChecked');if(checkbox)checkbox.onchange=()=>saveDetails(true)}
@@ -57,14 +60,97 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  $('healthBadge').className='health-badge '+(s.ready?'ok':'warning');$('healthBadge').textContent=s.ready?'Ready to generate':`${s.issues.length} detail${s.issues.length===1?'':'s'} needed`;
  if(!q.assets.length){$('healthList').innerHTML='<div class="health-item">Upload equipment and complete the customer details to begin.</div>'}
  $('advisoryNote').textContent=s.estimated_rows?`${s.estimated_rows} equipment line(s) use catalogue-derived estimates (including possible historic-model comparisons). Check the reference details before customer issue; this is not an exact old-SKU price.`:'Matching and pricing do not require a separate review step.';
+ updateGuidance();
 }
+function updateGuidance(){
+ const q=state.quote,s=state.summary;if(!q||!s)return;
+ const active=q.assets.filter(a=>!a.excluded);
+ const pmap=Object.fromEntries(s.lines.map(l=>[l.id,l.price]));
+ const unresolved=active.filter(a=>!pmap[a.id]||a.qty_issue||pmap[a.id]?.basis==='historic-reference');
+ const count=unresolved.length,imported=q.assets.length;
+ let heading='',detail='',cta='',action;
+ let phase=0;
+ if(!imported){heading='Start with an equipment list';detail='Upload Excel or CSV to check the detected machines before adding them. You can also add equipment manually.';cta='Choose asset list →';action=()=>$('filePicker').click();phase=0}
+ else if(count){heading=`Review ${count} machine${count===1?'':'s'} needing attention`;detail=`${imported} source rows are retained and grouped by machine. Confirm model/console or missing quantities; incomplete prices stay outside the quoted subtotal.`;cta='Review next machine →';action=()=>reviewNext();phase=1}
+ else if(!q.customer?.trim()||!q.site?.trim()){heading='Add the customer and site';detail='Equipment has been reviewed. Complete the customer and site details to prepare the proposal.';cta='Open quote details →';action=()=>$('quoteDetails').scrollIntoView({behavior:'smooth',block:'start'});phase=2}
+ else if(!s.ready){heading=`Resolve ${s.issues.length} quotation requirement${s.issues.length===1?'':'s'}`;detail=(s.issues[0]||'Review agreement cover and price assumptions.')+' Open the checklist for the full details.';cta='Review proposal →';action=()=>$('quoteDetails').scrollIntoView({behavior:'smooth',block:'start'});phase=2}
+ else{heading='Draft quotation prepared';detail='All current application checks pass. Prices remain provisional until Pulse Fitness commercial approval; verify contract terms before customer issue.';cta='Generate quotation PDF →';action=downloadPdf;phase=3}
+ $('workflowTitle').textContent=heading;$('workflowDetail').textContent=detail;
+ const btn=$('workflowAction');btn.textContent=cta;btn.onclick=action;
+ document.querySelectorAll('.stepbar .step').forEach((el,i)=>{el.classList.toggle('active',i===phase);el.classList.toggle('complete',i<phase)});
+}
+
 function collect(){let v={};['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>v[k]=$(k).value);v.tier=state.quote.tier;if(state.quote.renewal?.fixed_price_extension)v.renewal_option_checked=!!$('renewalOptionChecked')?.checked;return v}
-async function saveDetails(quiet=false){try{const d=await api('/api/quotes/'+state.quote.id,{method:'PUT',body:JSON.stringify(collect())});apply(d);render();if(!quiet)toast('Quote updated. Prices recalculated automatically.')}catch(e){toast(e.message,true)}}
-async function importFile(file){if(!file)return;const z=$('dropzone');z.classList.add('busy');$('uploadedText').textContent='Reading '+file.name+'…';try{
-  if(file.size>25*1024*1024)throw new Error('Please split this file: 25 MB limit for a single import.');
-  const bytes=new Uint8Array(await file.arrayBuffer());let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
-  const d=await api('/api/quotes/'+state.quote.id+'/import',{method:'POST',body:JSON.stringify({filename:file.name,content_base64:btoa(s)})});apply(d);state.filter='all';render();toast(`${d.import_report.added} assets imported into ${d.import_report.grouped_lines} equipment groups. Review any unpriced groups.`);document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
- }catch(e){toast(e.message,true)}finally{z.classList.remove('busy');$('filePicker').value=''}}
+function saveDetails(quiet=false){
+ const quoteId=state.quote.id,values=collect();saveMessage('Saving changes…');
+ const task=saveQueue.catch(()=>{}).then(async()=>{
+  try{
+   const d=await api('/api/quotes/'+quoteId,{method:'PUT',body:JSON.stringify(values)});
+   if(state.quote.id!==quoteId)return;
+   apply(d);
+   // A slow response must not erase details entered while the request ran.
+   if(JSON.stringify(collect())===JSON.stringify(values)){
+    render();saveMessage('Saved · changes are retained');
+   }else saveMessage('Newer changes pending…');
+   if(!quiet)toast('Quote settings saved. Prices recalculated automatically.');
+  }catch(e){saveMessage('Could not save. Use Save quote settings to retry.',true);toast(e.message,true)}
+ });
+ saveQueue=task;return task;
+}
+function quickHelp(){
+ $('modalTitle').textContent='SmartQuote — 60-second staff guide';
+ $('modalContent').innerHTML=`<div class="quick-help"><p><b>1. Import a file:</b> Excel and CSV go through a preview first. Check the machine count, grouped lines and quantity warnings. The original spreadsheet is never changed.</p>
+ <p><b>2. Review equipment:</b> Select <strong>Needs a price</strong> or <strong>Your next step</strong> to work through unresolved machines. One correct selection can be applied to identical source lines. Always check the physical model and console before confirming.</p>
+ <p><b>3. Complete the quote:</b> Fill in the customer, site and maintenance cover. Quote settings save when you leave a field. Missing prices remain outside the partial subtotal.</p>
+ <p><b>4. Generate the PDF:</b> The current library still has unapproved historical configurations and provisional tariffs. Treat outputs as pilot drafts until commercial sign-off.</p>
+ <div class="editor-help"><b>Made a mistake?</b> Undo an untouched last import. If equipment has been edited, undo is deliberately blocked so staff corrections cannot disappear.</div>
+ <p><b>Keyboard:</b> Ctrl+S saves quote details; Alt+N opens the next unresolved machine; Esc closes a dialogue.</p>
+ <button class="primary-btn" id="closeHelp" type="button">Got it — back to my quote</button></div>`;
+ $('modal').classList.remove('hidden');$('closeHelp').onclick=()=>$('modal').classList.add('hidden');
+}
+
+async function importFile(file){
+ if(!file)return;
+ const z=$('dropzone');z.classList.add('busy');$('uploadedText').textContent='Previewing '+file.name+'…';
+ try{
+  if(file.size>25*1024*1024)throw new Error('Maximum file size is 25 MB. Split this spreadsheet before importing.');
+  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
+  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+  const request={filename:file.name,content_base64:btoa(binary)};
+  const data=await api('/api/quotes/'+state.quote.id+'/import-preview',{method:'POST',body:JSON.stringify(request)});
+  const sheets=data.sheets.map(s=>`${esc(s.sheet)} (${s.assets_found} assets${s.headings_recognised?'':' · headings NOT recognised'})`).join(' · ');
+  const warn=data.warnings.slice(0,6).map(w=>`<li>${esc(w)}</li>`).join('');
+  $('modalTitle').textContent='Check equipment before importing';
+  $('modalContent').innerHTML=`<div class="import-preview-intro"><b>${esc(file.name)}</b><p>${esc(data.notice)}</p></div>
+   <div class="import-preview-stats"><div><strong>${data.source_rows}</strong><small>Original asset rows</small></div><div><strong>${data.physical_units}</strong><small>Machine units</small></div><div><strong>${data.equipment_groups}</strong><small>Condensed groups</small></div><div><strong>${data.draft_priced_rows}</strong><small>Draft-priced rows</small></div></div>
+   <div class="import-preview-details"><p><b>Detected worksheets:</b> ${sheets||'None'}</p>
+   <p><b>Recognised identities:</b> ${data.identified_rows} of ${data.source_rows} source rows · <b>Quantity checks:</b> ${data.quantity_checks}</p>
+   ${data.existing_quote_rows?`<p class="import-warning">This quote already contains ${data.existing_quote_rows} asset rows. Importing will APPEND these rows, not replace the existing equipment.</p>`:''}
+   ${data.already_imported?'<p class="import-error"><b>This exact file is already in this quotation.</b> Import is blocked to prevent duplicate machines.</p>':''}
+   ${warn?`<details open><summary>Review source warnings (${data.warnings.length+data.more_warnings})</summary><ul>${warn}${data.more_warnings||data.warnings.length>6?'<li>More warnings will remain attached to the quotation.</li>':''}</ul></details>`:''}
+   <h3>Sample of grouped equipment</h3><div class="import-preview-rows">${data.sample_groups.map(g=>`<div><b>${esc(g.units)} × ${esc(g.description)}</b><small>${esc(g.code||'No model code')} · ${g.source_rows} source rows · ${g.draft_priced?'Draft price found':'Price requires review'}</small></div>`).join('')}</div></div>
+   <div class="editor-actions"><button class="secondary-btn" id="cancelImport" type="button">Cancel — make no changes</button><button class="primary-btn" id="confirmImport" type="button" ${data.already_imported?'disabled':''}>Add ${data.source_rows} asset rows to quote →</button></div>`;
+  $('modal').classList.remove('hidden');$('cancelImport').onclick=()=>{$('modal').classList.add('hidden');$('uploadedText').textContent=state.quote.files.length?`${state.quote.files.length} file(s) imported`:'No files uploaded yet'};
+  $('confirmImport').onclick=async()=>{
+   const button=$('confirmImport');button.disabled=true;button.textContent='Importing assets…';
+   try{
+    const d=await api('/api/quotes/'+state.quote.id+'/import',{method:'POST',body:JSON.stringify({...request,content_sha256:data.content_sha256})});
+    apply(d);state.filter='issues';$('modal').classList.add('hidden');render();
+    toast(`${d.import_report.added} source assets added as ${d.import_report.grouped_lines} groups. Review equipment needing attention.`);
+    document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
+   }catch(e){toast(e.message,true);button.disabled=false;button.textContent='Retry confirmed import →'}
+  };
+ }catch(e){toast(e.message,true);$('uploadedText').textContent='Import not completed';}
+ finally{z.classList.remove('busy');$('filePicker').value=''}
+}
+async function undoLastImport(){
+ const file=state.quote.files.at(-1);if(!file?.batch_id)return;
+ if(!confirm(`Undo the last spreadsheet import, ${file.filename} (${file.imported} original asset rows)?\n\nThis removes ONLY the untouched last import. All other assets are retained.`))return;
+ try{
+  const result=await api('/api/quotes/'+state.quote.id+'/imports/undo-last',{method:'POST'});
+  apply(result);state.filter='all';render();toast(`Undid ${result.undone_rows} asset rows from ${result.filename}.`);
+ }catch(e){toast(e.message,true)}
+}
 function issueAssets(){const cost=Object.fromEntries(state.summary.lines.map(x=>[x.id,x.price]));return state.quote.assets.filter(a=>!a.excluded&&(!cost[a.id]||a.qty_issue))}
 function reviewNext(afterId=null){const list=issueAssets();let next=list[0];if(afterId){const all=state.quote.assets,ix=all.findIndex(a=>a.id===afterId);next=all.slice(ix+1).concat(all.slice(0,ix+1)).find(a=>list.some(t=>t.id===a.id));}if(next)review(next.id);else{$('modal').classList.add('hidden');toast('All included equipment is priced. Finish the customer details and generate the quote.');}}
 function review(id){
@@ -194,10 +280,17 @@ async function downloadVersion(version){try{
  }catch(e){toast(e.message,true)}}
 function sampleCsv(){const s=`Random export title,24 September 2026,,,,\nPlease quote the equipment at Riverside Leisure,,,,\nEquipment Description, Qty , Product Code, Serial No, Model, Console\nClub Line Treadmill,3,260G-AAS,SN1000-SN1002,260G,Console 5 (Series 2)\nClub Line StepMill,2,200H-AAE,SN301-302,200H,Console 8 (Series 3 Mini)\nInclusive Shoulder Press,1,305H-AGC,SN511,305H,Strength Console\nExisting older treadmill,1,R260G-5.00DRPW,AB-099,260G,Console 5 (Series 2)\nRowing machine - please confirm model,2,,N/A,,\nTOTAL,9,,,,`;return new File([s],'Messy_Leisure_Centre_Assets.csv',{type:'text/csv'})}
 function showView(v){state.view=v;['builder','register','catalogue','manager','users'].forEach(id=>$(id+'View').classList.toggle('hidden',v!==id));['navBuilder','navRegister','navCatalogue','navManager','navUsers'].forEach((id,i)=>$(id).classList.toggle('selected',['builder','register','catalogue','manager','users'][i]===v));$('crumbTitle').textContent={builder:'Smart Quote Builder',register:'Quote Register',catalogue:'Equipment Catalogue',manager:'Master Price List',users:'Staff Users'}[v];if(v==='register')loadRegister();if(v==='manager')loadManager();if(v==='users')loadUsers()}
+let registerRequestId=0;
 async function loadRegister(){try{
- const [d,metrics]=await Promise.all([api('/api/quotes'),api('/api/reporting/summary')]);
+ const requestId=++registerRequestId;
+ const term=$('quoteFind')?.value.trim()||'';
+ const status=$('quoteStatusFilter')?.value||'';
+ const [d,metrics]=await Promise.all([
+  api('/api/quotes?q='+encodeURIComponent(term)+'&pipeline_status='+encodeURIComponent(status)+'&limit=150'),
+  api('/api/reporting/summary')]);
+ if(requestId!==registerRequestId)return;
  $('pipelineStats').innerHTML=`<div><strong>${metrics.total_quotes}</strong><small>Saved quotes</small></div><div><strong>${metrics.pilot_snapshots}</strong><small>Pilot PDFs archived</small></div><div><strong>${metrics.pipeline['Accepted']||0}</strong><small>Recorded acceptances</small></div><div><strong>${money(metrics.recorded_accepted_annual)}</strong><small>Recorded accepted annual</small></div>`;
- $('quotesList').innerHTML=d.quotes.length?d.quotes.map(q=>`<div class="quote-list-row" data-open="${esc(q.id)}"><div><strong>${esc(q.quote_no)}</strong><p>${esc(q.customer||'Unnamed customer')} · ${esc(q.site||'No site')} · ${esc(q.tier)} · ${esc(q.pipeline_status||'Draft')}</p></div><div class="qval">${money(q.annual)} / yr</div></div>`).join(''):'<p>No quotations yet.</p>';
+ $('quotesList').innerHTML=d.quotes.length?d.quotes.map(q=>`<div class="quote-list-row" data-open="${esc(q.id)}"><div><strong>${esc(q.quote_no)}</strong><p>${esc(q.customer||'Unnamed customer')} · ${esc(q.site||'No site')} · ${esc(q.tier)} · ${esc(q.pipeline_status||'Draft')}</p></div><div class="qval">${money(q.annual)} / yr</div></div>`).join(''):'<p>No quotations match these filters.</p>';
  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=async()=>{apply(await api('/api/quotes/'+b.dataset.open));localStorage.setItem('pulse_quote_id',b.dataset.open);render();showView('builder')})
  }catch(e){toast(e.message,true)}}
 async function exportRegister(){try{const r=await fetch('/api/reporting/quotes.csv',{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});if(!r.ok)throw new Error('Could not export register');let url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='Pulse_SmartQuote_Register.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),20000)}catch(e){toast(e.message,true)}}
@@ -278,9 +371,19 @@ async function loadUsers(){try{
  }catch(e){toast(e.message,true)}}
 async function addUserFromUI(){try{const data={username:$('newUsername').value,role:$('newUserRole').value,password:$('newUserPassword').value};await api('/api/users',{method:'POST',body:JSON.stringify(data)});$('newUserPassword').value='';$('newUsername').value='';toast('Staff account created.');loadUsers()}catch(e){toast(e.message,true)}}
 function bind(){
+ document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&!$('modal').classList.contains('hidden')){$('modal').classList.add('hidden');return;}
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){
+   event.preventDefault();if(state.view==='builder'&&state.quote)saveDetails();
+  }
+  if(event.altKey&&event.key.toLowerCase()==='n'&&$('modal').classList.contains('hidden')&&state.view==='builder'){
+   event.preventDefault();reviewNext();
+  }
+ });
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
+ $('staffHelp').onclick=quickHelp;$('quoteFind').addEventListener('input',()=>{clearTimeout(window.quoteFindTimer);window.quoteFindTimer=setTimeout(loadRegister,260)});$('quoteStatusFilter').onchange=loadRegister;
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
- $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el)el.addEventListener('change',()=>saveDetails(true))});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
+ $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;

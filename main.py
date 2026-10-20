@@ -7,6 +7,7 @@ import engine as eng
 import catalogue_admin as admin
 import matching_memory as memory
 from catalogue_gaps import analyse as analyse_gaps
+from import_quality import preview as import_preflight
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
@@ -147,35 +148,108 @@ def health():return {'ok':True,'name':'Pulse Fitness SmartQuote','mode':'local c
 def bootstrap():
  return {'source':PRICING['source'],'counts':PRICING['source_counts'],'tiers':PRICING['tiers'],'packages':PACKAGES,'rates':PRICING['rates'],'mode':'Local pilot with user sign-in; not a production identity provider'}
 @app.get('/api/quotes')
-def list_quotes():
+def list_quotes(q:str='',pipeline_status:str='',limit:int=80):
+ # Search stored quotes server-side: staff should still find older quotes when
+ # the register contains more than the default first-page limit.
+ needle=q.strip().casefold()[:150]
+ status=pipeline_status.strip().casefold()[:60]
+ cap=min(250,max(1,limit))
  with _lock:
-  c=conn();r=c.execute('SELECT id,quote_no,created,updated,status,payload FROM quotes ORDER BY updated DESC LIMIT 60').fetchall();c.close()
+  c=conn()
+  rows=c.execute('SELECT id,quote_no,created,updated,status,payload FROM quotes ORDER BY updated DESC LIMIT 10000').fetchall()
+  c.close()
  out=[]
- for x in r:
-  q=json.loads(x['payload']);s=calc_quote(q)
-  out.append({'id':q['id'],'quote_no':q['quote_no'],'customer':q['customer'],'site':q['site'],'tier':q['tier'],'status':q['status'],'pipeline_status':q.get('pipeline_status','Draft'),'annual':s['annual'],'lines':s['rows'],'updated':q['updated']})
- return {'quotes':out}
+ for x in rows:
+  quote=json.loads(x['payload'])
+  if status and quote.get('pipeline_status','Draft').casefold()!=status:continue
+  if needle and needle not in ' '.join(str(quote.get(key) or '') for key in
+        ('quote_no','customer','site','contact','contact_email','account_ref','contract_ref')).casefold():
+   continue
+  s=calc_quote(quote)
+  out.append({'id':quote['id'],'quote_no':quote['quote_no'],
+              'customer':quote['customer'],'site':quote['site'],'tier':quote['tier'],
+              'status':quote['status'],'pipeline_status':quote.get('pipeline_status','Draft'),
+              'annual':s['annual'],'lines':s['rows'],'updated':quote['updated']})
+  if len(out)>=cap:break
+ return {'quotes':out,'displayed':len(out),'limit':cap,'searched':bool(needle or status)}
 @app.post('/api/quotes')
 def create():return public(persist(defaults()))
 @app.get('/api/quotes/{id}')
 def load(id:str):return public(getq(id))
+def _parsed_asset_upload(payload):
+ filename=str(payload.get('filename',''))[:260]
+ encoded=payload.get('content_base64','')
+ if not isinstance(encoded,str) or len(encoded)>35*1024*1024:
+  raise HTTPException(413,'File is too large (25 MB maximum).')
+ try:
+  data=base64.b64decode(encoded,validate=True)
+  parsed=ingest(filename,data)
+ except Exception as e:raise HTTPException(400,str(e))
+ return parsed,hashlib.sha256(data).hexdigest()
+
+@app.post('/api/quotes/{id}/import-preview')
+async def upload_preview(id:str,request:Request):
+ """No quote writes; staff explicitly confirm a readable asset list before append."""
+ q=getq(id)
+ parsed,digest=_parsed_asset_upload(await request.json())
+ if len(q['assets'])+len(parsed['assets'])>2000:
+  raise HTTPException(400,'This import would exceed 2,000 asset rows. Split the register.')
+ result=import_preflight(parsed,q)
+ result['content_sha256']=digest
+ result['already_imported']=any(item.get('content_sha256')==digest for item in q['files'])
+ return result
+
 @app.post('/api/quotes/{id}/import')
 async def upload(id:str,request:Request):
  q=getq(id)
- payload=await request.json();filename=payload.get('filename','')
- encoded=payload.get('content_base64','')
- if len(encoded)>82*1024*1024:raise HTTPException(413,'File is too large (60 MB maximum).')
- try:data=base64.b64decode(encoded,validate=True);parsed=ingest(filename,data)
- except Exception as e:raise HTTPException(400,str(e))
+ payload=await request.json();filename=str(payload.get('filename',''))[:260]
+ parsed,digest=_parsed_asset_upload(payload)
+ if any(item.get('content_sha256')==digest for item in q['files']):
+  raise HTTPException(409,'This exact asset file has already been imported into this quote. No duplicate machines were added.')
+ expected=payload.get('content_sha256')
+ if expected and expected!=digest:
+  raise HTTPException(409,'The selected file changed since preview. Preview the file again before importing.')
  if len(q['assets'])+len(parsed['assets'])>2000:raise HTTPException(400,'Maximum 2,000 asset rows per quotation.')
  existing={a['id'] for a in q['assets']};index=len(existing)
+ batch_id=uuid.uuid4().hex
+ warnings_start=len(q['warnings'])
  for a in parsed['assets']:
   index+=1;a['id']=f'asset_{index}_{uuid.uuid4().hex[:6]}'
+  a['import_batch_id']=batch_id
   q['assets'].append(match_asset(a))
  q['warnings']+=parsed['warnings']
- q['files'].append({'filename':filename,'sheets':parsed['sheets'],'imported':len(parsed['assets']),'at':datetime.datetime.now().isoformat(timespec='seconds')})
+ q['files'].append({'filename':filename,'content_sha256':digest,'sheets':parsed['sheets'],'imported':len(parsed['assets']),'batch_id':batch_id,
+                    'warnings_start':warnings_start,
+                    'at':datetime.datetime.now().isoformat(timespec='seconds')})
  q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
  persist(q);record_event(id,actor(request)['username'],'ASSET_IMPORT',f"File {filename}, {len(parsed['assets'])} machine rows");return {**public(q),'import_report':{'files':parsed['sheets'],'warnings':parsed['warnings'],'added':len(parsed['assets']),'grouped_lines':len(grouped_assets(q['assets']))}}
+@app.post('/api/quotes/{id}/imports/undo-last')
+def undo_last_asset_import(id:str,request:Request):
+ """Undo only an untouched, most-recent spreadsheet batch; audit all removals."""
+ q=getq(id)
+ if not q.get('files') or not q['files'][-1].get('batch_id'):
+  raise HTTPException(409,'No reversible spreadsheet import is available. Older imports cannot be undone as a batch.')
+ latest=q['files'][-1]
+ batch=latest['batch_id']
+ chosen=[a for a in q['assets'] if a.get('import_batch_id')==batch]
+ if len(chosen)!=latest['imported'] or any(a.get('import_reviewed') for a in chosen):
+  raise HTTPException(409,'This import has been edited or partially removed. Undo is blocked to protect staff corrections.')
+ with _lock:
+  c=conn()
+  issued=c.execute('SELECT 1 FROM quote_versions WHERE quote_id=? LIMIT 1',(id,)).fetchone()
+  c.close()
+ if issued:
+  raise HTTPException(409,'An issued/PDF quotation version exists. Undo is disabled; create a new revision and review its equipment.')
+ q['assets']=[a for a in q['assets'] if a.get('import_batch_id')!=batch]
+ q['files'].pop()
+ before=int(latest.get('warnings_start',len(q['warnings'])))
+ q['warnings']=q['warnings'][:before]
+ q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
+ result=public(persist(q))
+ record_event(id,actor(request)['username'],'ASSET_IMPORT_UNDONE',
+              f"Removed {len(chosen)} rows from last import {latest['filename']} ({batch[:8]})")
+ return {**result,'undone_rows':len(chosen),'filename':latest['filename']}
+
 @app.post('/api/quotes/{id}/agreement-import')
 async def import_agreement(id:str,request:Request):
     q=getq(id);payload=await request.json();filename=str(payload.get('filename',''))
@@ -385,6 +459,7 @@ async def resolve(id:str,request:Request):
  if chosen.get('model'):asset['model']=chosen['model']
  if chosen.get('console_status')=='source' and chosen.get('console'):asset['console']=chosen['console']
  asset['selected']=chosen;asset['candidates']=[];asset['issues']=selection_issues(chosen)
+ if asset.get('import_batch_id'):asset['import_reviewed']=True
  asset['match_type']='Reviewed catalogue choice';asset['match_confidence']=95
  if data.get('apply_to_similar') is True:
   for other in q['assets']:
@@ -392,7 +467,8 @@ async def resolve(id:str,request:Request):
    if tuple(str(other.get(f,'')) for f in ('name','code','model','console','site'))!=original_identity:continue
    other['imported_name']=other.get('imported_name') or other.get('name','')
    other['imported_code']=other.get('imported_code') or other.get('code','')
-   other['selected']=dict(chosen);other['match_type']='Bulk-confirmed matching equipment';other['match_confidence']=95
+   other['selected']=dict(chosen);other['match_type']='Bulk-confirmed matching equipment'
+   if other.get('import_batch_id'):other['import_reviewed']=True;other['match_confidence']=95
    other['issues']=selection_issues(chosen)
    if chosen.get('sku'):other['code']=chosen['sku']
    if chosen.get('model'):other['model']=chosen['model']
@@ -432,6 +508,7 @@ async def edit_asset(id:str,aid:str,request:Request):
  if 'manual_annual_unit' in data:asset['manual_annual_unit']=manual
  if 'excluded' in data:asset['excluded']=data['excluded']
  # A documented manual price is deliberately not an auto-catalogue approval.
+ if asset.get('import_batch_id'):asset['import_reviewed']=True
  q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
  result=public(persist(q));record_event(id,actor(request)['username'],'EQUIPMENT_EDITED',f'Asset {aid}');return result
 @app.delete('/api/quotes/{id}/assets/{aid}')
