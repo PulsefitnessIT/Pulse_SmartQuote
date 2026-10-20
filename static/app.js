@@ -211,6 +211,94 @@ async function loadSmartReview(asset){
   });
  }catch(e){if($('smartReviewSuggestions')&&state.reviewingId===asset.id)$('smartReviewSuggestions').innerHTML=`<p class="editor-hint">Catalogue assistant unavailable: ${esc(e.message)}. Use manual catalogue search.</p>`;}
 }
+/** Review multiple distinct equipment groups with a read-only impact preview. */
+async function openBulkReview(offset=0){
+ if(!state.quote?.assets?.length){toast('Import equipment before reviewing matching groups.');return}
+ const quoteId=state.quote.id;
+ $('modalTitle').textContent='Match several equipment groups';
+ $('modalContent').innerHTML='<p class="editor-hint">Loading unresolved equipment groups…</p>';
+ $('modal').classList.remove('hidden');
+ try{
+  const data=await api(`/api/quotes/${quoteId}/bulk-review/queue?offset=${offset}&limit=30`);
+  if(state.quote.id!==quoteId)return;
+  const rows=data.groups;
+  $('modalContent').innerHTML=`<div class="bulk-review-intro"><b>${data.total_groups} equipment groups needing catalogue identification</b><p>Choose exact catalogue SKUs for verified machines. Suggestions are <strong>not approved equivalents</strong>. All consoles, source rows and serials remain distinct. One preview confirms the impact before any changes are saved.</p></div>
+   <div class="bulk-review-list">${rows.map((g,i)=>`<section class="bulk-group" data-group-index="${i}">
+    <div class="bulk-group-heading"><b>${esc(g.units)} × ${esc(g.description)}</b><span>${esc(g.rows)} source row${g.rows===1?'':'s'}</span></div>
+    <small>${esc(g.source_code||'No confirmed model')} · ${esc(g.site||'Unspecified site')} · Console: ${esc(g.source_console||'not specified')}</small>
+    ${g.variant_notice?`<div class="bulk-caution">Variant ${esc(g.variant_notice)} — physical variant must be verified.</div>`:''}
+    <details class="bulk-source"><summary>View serials and original row numbers</summary><small>Source rows: ${esc(g.source_rows.slice(0,30).join(', '))}${g.source_rows.length>30?' and '+(g.source_rows.length-30)+' more':''}</small><small>Serial numbers: ${esc(g.serials.slice(0,30).join(', ')||'not provided')}${g.serials.length>30?' and '+(g.serials.length-30)+' more':''}</small></details>
+    <label>Catalogue match for this group<select class="bulk-select" aria-label="Matching SKU for ${esc(g.description)}" ${!g.can_bulk_review?'disabled':''}>
+     <option value="">Leave unmatched for now</option>${g.candidates.map(c=>`<option value="${esc(c.sku)}" ${!c.batch_selectable?'disabled':''}>${esc(c.sku)} · ${esc(c.name)} · ${c.rrp?money(c.rrp):'RRP missing'}${c.batch_selectable?'':' — individual review required'}</option>`).join('')}</select></label>
+    ${!g.can_bulk_review?'<p class="bulk-caution">No batch-safe match. Use the individual editor to investigate historical variants, missing RRPs or different machine families.</p>':''}
+    <p class="bulk-choice-risk hidden" role="status"></p>
+    <div class="bulk-confirm-fields hidden"><label>Evidence for this exact SKU and console<input class="bulk-evidence" maxlength="400" placeholder="e.g. Checked actual model plate and console with engineer" aria-label="Evidence for ${esc(g.description)}"></label>
+     <label class="bulk-verified"><input type="checkbox" class="bulk-check"> I have verified the physical model and console for this group</label></div>
+    <button class="secondary-btn bulk-individual" data-individual="${i}" type="button">Review individually →</button>
+   </section>`).join('')||'<p class="editor-hint">There are no remaining unpriced groups eligible for identity review. Check quantities, price approval and the quotation readiness checklist.</p>'}</div>
+   <div class="bulk-actions"><small>Showing ${data.shown} of ${data.total_groups} groups · ${data.remaining} more after this page</small><div><button id="bulkNextPage" class="secondary-btn" type="button" ${!data.remaining?'disabled':''}>Next groups →</button><button id="bulkPreview" class="primary-btn" type="button" ${!rows.length?'disabled':''}>Preview selected matches →</button></div></div>
+   <div id="bulkImpact" role="status" aria-live="polite"></div>`;
+  const panel=$('modalContent');
+  const impact=panel.querySelector('#bulkImpact');
+  let previewActions=null;
+  function invalidate(){previewActions=null;impact.innerHTML=''}
+  panel.querySelectorAll('.bulk-group').forEach((node)=>{
+   const select=node.querySelector('.bulk-select');
+   const fields=node.querySelector('.bulk-confirm-fields');
+   select.onchange=()=>{
+    fields.classList.toggle('hidden',!select.value);
+    const item=rows[Number(node.dataset.groupIndex)].candidates.find(c=>c.sku===select.value);
+    const status=node.querySelector('.bulk-choice-risk');
+    status.classList.toggle('hidden',!item);
+    status.textContent=item?`Evidence: ${item.reason}. Reference RRP: ${item.rrp?money(item.rrp):'unavailable'}. ${item.review_flags?.join('; ')||'Current RRP/tariff still needs commercial approval.'}`:'';
+    invalidate()
+   };
+   node.querySelector('.bulk-evidence').oninput=invalidate;
+   node.querySelector('.bulk-check').onchange=invalidate;
+  });
+  panel.querySelectorAll('[data-individual]').forEach(btn=>btn.onclick=()=>{
+   const group=rows[Number(btn.dataset.individual)];$('modal').classList.add('hidden');review(group.asset_id);
+  });
+  panel.querySelector('#bulkNextPage').onclick=()=>openBulkReview(offset+rows.length);
+  panel.querySelector('#bulkPreview').onclick=async()=>{
+   const actions=[];
+   for(const [i,group] of rows.entries()){
+    const node=panel.querySelector(`[data-group-index="${i}"]`);
+    const sku=node.querySelector('.bulk-select').value;
+    if(!sku)continue;
+    const verified=node.querySelector('.bulk-check').checked;
+    const evidence=node.querySelector('.bulk-evidence').value.trim();
+    if(!verified||evidence.length<12){toast('For each selected group, check the verification box and enter detailed evidence (12+ characters).',true);node.scrollIntoView({block:'center'});return}
+    actions.push({asset_id:group.asset_id,sku,verified,evidence});
+   }
+   if(!actions.length){toast('Select at least one catalogue match, or review a machine individually.',true);return}
+   if(actions.length>20){toast('Review no more than 20 groups in one confirmation.',true);return}
+   const button=panel.querySelector('#bulkPreview');button.disabled=true;
+   try{
+    const result=await api(`/api/quotes/${quoteId}/bulk-review/preview`,{method:'POST',body:JSON.stringify({token:data.token,actions})});
+    previewActions=actions;
+    impact.innerHTML=`<div class="bulk-impact"><h3>Review impact — nothing has been changed</h3>
+     <p><b>${result.groups} groups</b> · ${result.source_rows} original asset rows · ${result.units} machines · ${result.draft_priced_assets} draft-priced assets after selection.</p>
+     <div class="bulk-impact-list">${result.changes.map(c=>`<div><b>${esc(c.units)} × ${esc(c.description)} → ${esc(c.sku)}</b><small>${esc(c.site)} · ${esc(c.source_rows)} source rows · ${c.draft_priced_assets} draft-priced assets</small>${c.warnings?.length?`<p>${esc(c.warnings.join('; '))}</p>`:''}</div>`).join('')}</div>
+     <p class="bulk-caution"><b>Not commercially approved.</b> Current RRPs and maintenance tariffs remain provisional. An identity match does not authorise a customer quotation.</p>
+     <label class="bulk-verified"><input type="checkbox" id="bulkFinalAck"> I have checked all selections, source evidence, machine variants and consoles above.</label>
+     <button class="primary-btn" id="bulkCommit" type="button" disabled>Confirm ${esc(result.groups)} groups and save changes</button>
+    </div>`;
+    impact.querySelector('#bulkFinalAck').onchange=e=>impact.querySelector('#bulkCommit').disabled=!e.target.checked;
+    impact.querySelector('#bulkCommit').onclick=async()=>{
+     const confirmBtn=impact.querySelector('#bulkCommit');confirmBtn.disabled=true;confirmBtn.textContent='Saving reviewed equipment…';
+     try{
+      const applied=await api(`/api/quotes/${quoteId}/bulk-review/apply`,{method:'POST',body:JSON.stringify({token:data.token,actions:previewActions,acknowledge:true})});
+      if(state.quote.id===quoteId){apply(applied);state.filter='issues';render();$('modal').classList.add('hidden');toast(`${applied.batch_review.groups} groups confirmed · ${applied.batch_review.source_rows} original assets retained.`)}
+     }catch(e){toast(e.message,true);confirmBtn.disabled=false;confirmBtn.textContent='Confirm matches and save'}
+    };
+    impact.scrollIntoView({block:'nearest',behavior:'smooth'});
+   }catch(e){invalidate();toast(e.message,true)}finally{button.disabled=false}
+  };
+  panel.querySelector('.bulk-select:not([disabled])')?.focus();
+ }catch(e){toast(e.message,true);$('modalContent').innerHTML=`<p class="bulk-caution">${esc(e.message)}. No changes were made.</p>`}
+}
+
 async function downloadAssetRegister(){
  try{
   const response=await fetch(`/api/quotes/${state.quote.id}/asset-register.csv`,{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});
@@ -383,7 +471,7 @@ function bind(){
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
  $('staffHelp').onclick=quickHelp;$('quoteFind').addEventListener('input',()=>{clearTimeout(window.quoteFindTimer);window.quoteFindTimer=setTimeout(loadRegister,260)});$('quoteStatusFilter').onchange=loadRegister;
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
- $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
+ $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;

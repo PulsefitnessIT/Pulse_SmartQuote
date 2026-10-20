@@ -8,6 +8,7 @@ import catalogue_admin as admin
 import matching_memory as memory
 from catalogue_gaps import analyse as analyse_gaps
 from import_quality import preview as import_preflight
+import bulk_review
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
@@ -430,6 +431,46 @@ def original_asset_register(id:str):
     return Response(content='\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
                     headers={'Content-Disposition':f'attachment; filename="SmartQuote_{id[:16]}_Original_Asset_Register.csv"'})
 
+@app.get('/api/quotes/{id}/bulk-review/queue')
+def bulk_review_queue(id:str, offset:int=0, limit:int=30):
+    """Read-only triage of unresolved equipment groups and suggested SKUs."""
+    return bulk_review.queue(getq(id), admin.revision(), offset, limit)
+
+
+@app.post('/api/quotes/{id}/bulk-review/preview')
+async def bulk_review_preview(id:str, request:Request):
+    """Preview the proposed impact without changing any quote records."""
+    payload=await request.json()
+    if not isinstance(payload,dict):raise HTTPException(400,'Review request must be an object.')
+    try:
+        _, summary=bulk_review.prepare(getq(id),admin.revision(),
+                    payload.get('actions'),payload.get('token'))
+        return summary
+    except bulk_review.ReviewError as exc:
+        raise HTTPException(409,str(exc))
+
+
+@app.post('/api/quotes/{id}/bulk-review/apply')
+async def bulk_review_apply(id:str, request:Request):
+    """Atomically commit an explicitly confirmed and still-current batch."""
+    payload=await request.json()
+    if not isinstance(payload,dict):raise HTTPException(400,'Review request must be an object.')
+    if payload.get('acknowledge') is not True:
+        raise HTTPException(400,'Read the preview and confirm the machine choices first.')
+    with _lock:
+        try:
+            changed, summary=bulk_review.prepare(getq(id),admin.revision(),
+                         payload.get('actions'),payload.get('token'))
+        except bulk_review.ReviewError as exc:
+            raise HTTPException(409,str(exc))
+        persist(changed)
+        record_event(id,actor(request)['username'],'BULK_EQUIPMENT_REVIEW',
+            f"Verified {summary['groups']} groups, {summary['source_rows']} source rows, "
+            f"{summary['units']} units; catalogue SKUs " + ', '.join(
+            x['sku'] for x in summary['changes']))
+        return {**public(changed), 'batch_review':summary}
+
+
 @app.post('/api/quotes/{id}/resolve')
 async def resolve(id:str,request:Request):
  q=getq(id);data=await request.json();aid=data.get('asset_id')
@@ -669,6 +710,7 @@ async def catalogue_preview(request:Request):
 @app.post('/api/catalog/admin/import/apply')
 async def catalogue_apply(request:Request):
     payload=await request.json()
+    if not isinstance(payload,dict):raise HTTPException(400,'Review request must be an object.')
     if payload.get('acknowledge') is not True:raise HTTPException(400,'Confirm that the import preview has been reviewed.')
     try:
         with _lock:return admin.apply_stage(str(payload.get('stage_id','')),actor(request)['username'],payload.get('reason',''))
