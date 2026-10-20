@@ -4,7 +4,7 @@ CONTROLLED INTERNAL PILOT - NOT APPROVED FOR CUSTOMER QUOTATIONS
 
 DOWNLOAD THE FULL PROGRAM DIRECTLY FROM GITHUB
 ------------------------------------------------
-1. Open https://github.com/PulsefitnessIT/Pulse_SmartQuote_V9
+1. Open https://github.com/PulsefitnessIT/Pulse_SmartQuote
 2. Select the branch dropdown and choose: develop/v10
 3. Click the green Code button > Download ZIP.
 4. In Windows Explorer right-click the downloaded ZIP > Extract All.
@@ -13,7 +13,10 @@ DOWNLOAD THE FULL PROGRAM DIRECTLY FROM GITHUB
 7. On the first run, SmartQuote creates a private .venv and installs its Python
    dependencies. You must have Python 3.11+ installed and internet access on the
    first run. Create your administrator sign-in when asked.
-8. The browser opens at http://127.0.0.1:8765
+8. The browser opens automatically. It normally uses http://127.0.0.1:8765; if
+   V9 or another application is already using that address, V10 opens on
+   127.0.0.1:8766 (or another available port). Use the opened address.
+9. Confirm the left-hand SmartQuote label says V10 INTERNAL PILOT, not V9.
 
 ALTERNATIVE: GitHub Actions > SmartQuote V10 Python tests > latest successful run
 > Artifacts > Pulse-SmartQuote-V10-Internal-Pilot. GitHub wraps the program ZIP
@@ -26,6 +29,9 @@ TROUBLESHOOTING
 - "pip failed": check internet access and company proxy/firewall; ask IT.
 - Check installation without launching: start_windows.bat --check
 - Do not launch from inside a ZIP preview or a read-only network folder.
+- "Failed to fetch" uploading a file: check the black command window is open
+  and the browser shows V10, NOT the older V9 pilot. Restart using the
+  NEW extracted folder. V10 will avoid occupied ports automatically.
 - Do not close the black window while SmartQuote is in use.
 - The downloaded ZIP includes the Python SOURCE, not an offline .exe. It needs
   Python and a one-time package installation on the PC.
