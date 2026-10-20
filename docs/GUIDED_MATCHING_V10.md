@@ -24,3 +24,10 @@ M Club Newcastle remains the principal complex test: 165 original assets condens
 `python build_v10_pilot.py --output dist/Pulse_Fitness_SmartQuote_V10_Guided_Matching_Pilot.zip`
 
 The recovery archive included in some local pilots has 6,909 identities from eight revisions, not independently audited full 2020–2026 coverage. The release builder does not authorise customer issue.
+
+## Next development — reviewed matching memory and queue
+
+See [RECONCILIATION_WORKFLOW_V10.md](RECONCILIATION_WORKFLOW_V10.md) for manager-owned,
+reusable *identity* suggestions and a cross-quote missing-equipment worklist.
+These add no approved RRP, apply no inferred substitution, and preserve the
+original physical asset register.

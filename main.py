@@ -5,6 +5,8 @@ import base64,json,os,sqlite3,threading,uuid,datetime,re,hashlib,csv,io
 from io import BytesIO
 import engine as eng
 import catalogue_admin as admin
+import matching_memory as memory
+from catalogue_gaps import analyse as analyse_gaps
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
@@ -272,6 +274,7 @@ def match_review(id:str,aid:str):
     a=next((asset for asset in q['assets'] if asset['id']==aid),None)
     if a is None:raise HTTPException(404,'Equipment row not found')
     report=eng.review_candidates(a,limit=12)
+    report['reviewed_match']=memory.recall(a,admin.revision())
     # A displayed group is a view, never a new physical source record.
     pmap={line['id']:line['price'] for line in calc_quote(q)['lines']}
     group=next((g for g in grouped_assets(q['assets'],pmap) if aid in g['ids']),None)
@@ -365,6 +368,16 @@ async def resolve(id:str,request:Request):
  if sku and sku in BY_SKU:chosen=live_catalogue_option(BY_SKU[sku],'Manually confirmed SKU')
  elif key in BY_KEY:chosen=config_option(BY_KEY[key],'Manually confirmed configuration')
  else:raise HTTPException(400,'Not present in authorised catalogue')
+ # A retained mapping is identity evidence only, never automatic selection.
+ # Save it BEFORE mutating quote assets so a conflicting memory rule does not
+ # leave the quote half-updated. Only managers may curate this shared register.
+ if data.get('remember_match') is True:
+  if actor(request)['role'] not in ('manager','admin'):
+   raise HTTPException(403,'Manager permission required to retain a reusable equipment identity.')
+  try:
+   memory.remember(asset,chosen.get('sku',''),actor(request)['username'],
+                   data.get('review_evidence',''),admin.revision())
+  except ValueError as e:raise HTTPException(409,str(e))
  original_identity=tuple(str(asset.get(f,'')) for f in ('name','code','model','console','site'))
  if not asset.get('imported_code'):asset['imported_code']=asset.get('code','')
  if not asset.get('imported_name'):asset['imported_name']=asset.get('name','')
@@ -482,6 +495,55 @@ def historical_catalogue_lookup(identifier:str):
     result=eng.historical_identity(identifier)
     return result or {'lookup':identifier,'variant_count':0,'evidence_only':True,'variants':[],
                       'message':'No corresponding historical master identity found; do not infer an RRP.'}
+
+@app.get('/api/catalog/admin/matching-memory')
+def matching_memory_list():
+    rules=memory.all_rules()
+    return {'rules':rules,'active':sum(x['status']=='active' for x in rules),
+            'notice':'Human-reviewed identity crosswalk; never auto-applied, never a source of authorised RRP.'}
+
+@app.post('/api/catalog/admin/matching-memory/{rule_id}/revoke')
+async def matching_memory_revoke(rule_id:str,request:Request):
+    data=await request.json()
+    try:return memory.revoke(rule_id,actor(request)['username'],data.get('reason',''))
+    except ValueError as ex:raise HTTPException(400,str(ex))
+
+
+def _pending_quote_payloads():
+    with _lock:
+        c=conn()
+        records=c.execute('SELECT payload FROM quotes WHERE id NOT IN '
+             '(SELECT DISTINCT quote_id FROM quote_versions) ORDER BY updated DESC LIMIT 500').fetchall()
+        c.close()
+    result=[]
+    for record in records:
+        try:
+            q=json.loads(record['payload'])
+            if q.get('assets'):
+                result.append(getq(q['id']) if q.get('catalogue_revision',0)!=admin.revision() else q)
+        except (KeyError,ValueError,TypeError,HTTPException):continue
+    return result
+
+
+@app.get('/api/catalog/admin/matching-gaps')
+def matching_gaps():
+    return analyse_gaps(_pending_quote_payloads())
+
+@app.get('/api/catalog/admin/matching-gaps.csv')
+def matching_gaps_csv():
+    result=analyse_gaps(_pending_quote_payloads())
+    columns=[('quote_no','Quote'),('customer','Customer'),('site','Site'),
+             ('source_name','Original description'),('source_code','Original code'),
+             ('model','Model'),('console','Console'),('units','Units'),
+             ('source_rows','Asset rows'),('issue','Required action'),
+             ('quote_id','Quote ID'),('representative_asset_id','Asset ID')]
+    stream=io.StringIO(newline='');writer=csv.writer(stream)
+    writer.writerow([title for _,title in columns])
+    for item in result['items']:
+        writer.writerow([_safe_csv(item.get(key,'')) for key,_ in columns])
+    return Response(content='\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition':'attachment; filename="Pulse_SmartQuote_Missing_Equipment_Worklist.csv"'})
+
 
 @app.get('/api/catalog/admin/readiness')
 def catalog_readiness():

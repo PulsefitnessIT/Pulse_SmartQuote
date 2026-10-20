@@ -33,9 +33,12 @@ def evaluate(root, pricing=None):
     years = sorted({
         row.get("year") for row in sheets if isinstance(row, dict)
         and row.get("status") == "read" and isinstance(row.get("year"), int)
+        and row.get("equipment_rows", 1) > 0 and not row.get("metadata_only")
     })
     failures = sum(1 for row in sheets if isinstance(row, dict)
                    and row.get("status") == "failed")
+    metadata_only = sorted({row.get('year') for row in sheets if isinstance(row,dict)
+                            and row.get('metadata_only') and isinstance(row.get('year'),int)})
     consistent = (
         bool(manifest) and isinstance(manifest.get("unique_skus"), int)
         and manifest["unique_skus"] == len(records)
@@ -64,6 +67,8 @@ def evaluate(root, pricing=None):
         warnings.append("No imported source evidence for year(s): " + missing + ".")
     if failures:
         warnings.append(f"{failures} historical worksheet imports failed.")
+    if metadata_only:
+        warnings.append('Metadata-only years provide no equipment evidence: '+', '.join(map(str,metadata_only))+'.')
     if not source_reviewed:
         warnings.append("Historical source completeness has not been signed off by an authorised data owner.")
     if ambiguous:
@@ -77,6 +82,7 @@ def evaluate(root, pricing=None):
             "alias_codes": len(aliases),
             "ambiguous_alias_codes": ambiguous,
             "source_years": years,
+            "metadata_only_years": metadata_only,
             "failed_worksheets": failures,
             "manifest_consistent": consistent,
             "source_reviewed": source_reviewed,
