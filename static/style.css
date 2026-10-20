@@ -156,3 +156,21 @@ button:disabled{cursor:not-allowed;opacity:.6}
 
 .bulk-source summary{cursor:pointer;color:#256a97;font-size:11px;font-weight:750}.bulk-source small{display:block;overflow-wrap:anywhere;margin:5px 0}
 .bulk-choice-risk{font-size:11px;padding:9px 12px;border:1px solid #ebd7a8;background:#fffbef;border-radius:8px;color:#665326;line-height:1.6;margin:0}
+
+/* Staff-first pricing: console choice and sourced guide before verbose SKU matching. */
+.staff-quick-price{background:#f0f7fe;border:1px solid #bfd8f4;border-radius:12px;padding:16px 18px;margin:11px 0 17px;color:#253f5f;line-height:1.5}
+.staff-quick-price h3{margin:0 0 7px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:18px;color:#153c67}
+.staff-quick-price h3 small,.staff-quick-price p,.staff-quick-price small{color:#49627d}
+.staff-quick-price p{margin:6px 0 13px}.staff-quick-step{margin:14px 0;padding:12px 0;border-top:1px solid #d6e4f2}
+.staff-quick-step>b{display:block;color:#193858;margin-bottom:4px;font-size:14px}.staff-quick-step>small{display:block;font-size:12px}
+.staff-console-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.staff-console-choice,.staff-price-option{display:flex;align-items:start;gap:11px;border:1px solid #c9dced;border-radius:9px;background:#fff;padding:10px;cursor:pointer;font-size:13px;line-height:1.4}
+.staff-console-choice:hover,.staff-price-option:hover{border-color:#418dc5;background:#f8fcff}
+.staff-console-choice input,.staff-price-option input{margin-top:3px;flex-shrink:0;min-width:16px;min-height:16px}
+.staff-console-choice span,.staff-price-option span{display:grid;gap:3px}.staff-console-choice small,.staff-price-option small{display:block;color:#657c94;font-size:11px}
+.staff-price-option{margin-top:8px}.staff-quick-warning{background:#fff0d8;border-left:3px solid #d9a23d;padding:10px;color:#684d21;font-size:12px}
+.staff-quick-footer{display:grid;gap:10px;border-top:1px solid #d6e4f2;padding-top:13px}.staff-quick-footer .checkline{align-items:flex-start;line-height:1.55;font-size:12px}
+.staff-quick-footer>button{justify-self:start;min-height:43px;padding:10px 20px}.staff-quick-footer>small{font-size:11px}
+.advanced-equipment-matches{border:1px solid #dce5f0;background:#f9fbff;border-radius:9px;padding:12px;margin:14px 0}
+.advanced-equipment-matches>summary{cursor:pointer;font-weight:700;color:#246597;font-size:13px}
+@media(max-width:700px){.staff-console-choices{grid-template-columns:1fr}.staff-quick-price{padding:12px}}

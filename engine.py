@@ -10,6 +10,7 @@ from functools import lru_cache
 from renewal_pricing import family_reference
 from asset_intelligence import normalize_asset, grouped_assets
 from smart_candidates import family_code, suggest as suggest_review_candidates
+from staff_price_guides import guide as staff_guide
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -605,7 +606,7 @@ def calc_quote(q):
  if tier not in PRICING['tiers']:tier='Gold'
  discount=max(0,min(100,discount))
  term=max(1,min(5,int(q.get('term') or 1)))
- summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[]}
+ summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[]}
  rows=q.get('assets',[]);summary['rows']=len(rows)
  for a in rows:
   if a.get('excluded'):
@@ -625,6 +626,9 @@ def calc_quote(q):
     summary['issues'].append(f"Row {a.get('source_row','?')}: enter a source/reference for the manual rate")
    if not neat(a.get('name') or a.get('display_name')) or not (neat(a.get('code')) or neat(a.get('model'))):
     summary['issues'].append(f"Row {a.get('source_row','?')}: manual rate needs a description and code/model")
+  elif price and price.get('basis')=='staff-guided-estimate':
+   summary['estimated_rows']+=1
+   summary['issues'].append(f"Row {a.get('source_row','?')}: provisional family RRP/console guide only; verify exact configuration, rate and RRP before issuing.")
   elif price and price.get('basis')=='historic-reference':
    summary['estimated_rows']+=1
    summary['issues'].append(f"Row {a.get('source_row','?')}: £{a['historic_rrp']:,.2f} RRP is historical only; confirm a current RRP or approved renewal rate before issuing.")
@@ -634,7 +638,7 @@ def calc_quote(q):
    summary['issues'].append(f"Row {a.get('source_row','?')}: no usable price for this machine")
   else:
    selected=a['selected']
-   if selected.get('price_origin') in ('calculated-estimate','historic-family-estimate'):
+   if selected.get('price_origin') in ('calculated-estimate','historic-family-estimate','staff-guided-estimate'):
     summary['estimated_rows']+=1
     if selected.get('price_origin')=='historic-family-estimate':
      summary['advisories'].append(f"Row {a.get('source_row','?')}: historic model {a.get('code')} has estimated pricing from current model {selected.get('reference_model')}, reference SKU {selected.get('reference_sku')} (not an exact equipment match)")
@@ -646,7 +650,14 @@ def calc_quote(q):
     summary['advisories'].append(f"Row {a.get('source_row','?')}: console inferred from product description")
   if price and price['annual']<price['minimum']-0.01:
    summary['issues'].append(f"Row {a.get('source_row','?')}: discount reduces price below configured minimum; reduce discount")
-  summary['lines'].append({'id':a.get('id'),'price':price,'issues':a.get('issues',[])})
+  preview_guide=None
+  if not price and not a.get('excluded'):
+   try:
+    preview_guide=staff_guide(a,tier,discount,PRICING['tiers'],
+       {k:v['standard'] for k,v in RATES.items()})
+   except (ValueError,TypeError,ArithmeticError):preview_guide=None
+   if preview_guide:summary['guide_rows']+=1
+  summary['lines'].append({'id':a.get('id'),'price':price,'guide':preview_guide,'issues':a.get('issues',[])})
  summary['annual']=money(summary['annual']);summary['monthly']=money(summary['annual']/12);summary['term_total']=money(summary['annual']*term)
  if not neat(q.get('customer')) or not neat(q.get('site')):summary['issues'].append('Enter the customer and site.')
  visits=int(q.get('visits',1))

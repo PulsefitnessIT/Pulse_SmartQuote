@@ -11,6 +11,7 @@ import rrp_reconciliation as rrp2026
 from catalogue_gaps import analyse as analyse_gaps
 from import_quality import preview as import_preflight
 import bulk_review
+import staff_price_guides as quick_guide
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
@@ -353,6 +354,7 @@ def match_review(id:str,aid:str):
     if a is None:raise HTTPException(404,'Equipment row not found')
     report=eng.review_candidates(a,limit=12)
     report['reviewed_match']=memory.recall(a,admin.revision())
+    report['quick_price']=quick_guide.guide(a,q.get('tier','Gold'),q.get('discount',0),eng.PRICING['tiers'],{k:v['standard'] for k,v in eng.RATES.items()})
     report['legacy_rrp_policy']=hybrid.suggest(a,admin.revision())
     report['legacy_rrp_policy']=hybrid.suggest(a,admin.revision())
     # A displayed group is a view, never a new physical source record.
@@ -475,6 +477,63 @@ async def bulk_review_apply(id:str, request:Request):
             x['sku'] for x in summary['changes']))
         return {**public(changed), 'batch_review':summary}
 
+
+@app.get('/api/quotes/{id}/quick-price/{aid}')
+def quick_price(id:str,aid:str):
+    q=getq(id)
+    a=next((x for x in q['assets'] if x['id']==aid),None)
+    if a is None:raise HTTPException(404,'Equipment row not found')
+    guidance=quick_guide.guide(a,q.get('tier','Gold'),q.get('discount',0),
+              eng.PRICING['tiers'],{k:v['standard'] for k,v in eng.RATES.items()})
+    return guidance or {'status':'NOT_FOUND','message':'No current-source RRP for this exact model family; send to the pricing manager.'}
+
+@app.post('/api/quotes/{id}/quick-price')
+async def apply_quick_price(id:str,request:Request):
+    q=getq(id);payload=await request.json()
+    aid=str(payload.get('asset_id') or '');a=next((x for x in q['assets'] if x['id']==aid),None)
+    if a is None:raise HTTPException(404,'Equipment row not found')
+    if a.get('excluded'):raise HTTPException(409,'Cannot price an excluded asset.')
+    if a.get('selected') and a['selected'].get('price_origin')!='staff-guided-estimate':
+        raise HTTPException(409,'This equipment already has a confirmed selection. Use Edit line to change it.')
+    if payload.get('acknowledge_guide_only') is not True:
+        raise HTTPException(400,'Confirm this is a non-approved draft guide before continuing.')
+    if payload.get('console_verified') is not True:
+        raise HTTPException(400,'Confirm the installed console status before selecting this guide.')
+    try:
+        chosen,band,entry=quick_guide.picked(a,str(payload.get('example_sku','')).upper(),
+            str(payload.get('console_key','')),q.get('tier','Gold'),q.get('discount',0),
+            eng.PRICING['tiers'],{k:v['standard'] for k,v in eng.RATES.items()})
+    except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+    # The supplier master lists many finish/upholstery SKUs for identical machines.
+    # Never claim that the chosen source example is the physical equipment SKU.
+    source_reference=entry['example_sku']; model=chosen['model']; rrp=entry['rrp']
+    rate_group='Treadmill / Elliptical' if chosen['rate_fraction']==eng.RATES['Treadmill / Elliptical']['standard'] else 'Standard Equipment'
+    option={'sku':'','service_key':'','model':model,'name':a.get('name') or entry['example_name'],
+      'console':band['label'] if band['key']!='not-listed' else 'Not specified in source',
+      'console_status':'unverified','rrp':rrp,'rate_group':rate_group,
+      'price_origin':'staff-guided-estimate','eligible':'Estimate - approval required',
+      'approved':'Not approved','pricing_rule':'Provisional 2026 source RRP and maintenance tariff',
+      'console_pricing':1,'reference_sku':source_reference,
+      'reason':'Family-level draft guidance: finish/SKU not verified'}
+    original=tuple(str(a.get(k,'')) for k in ('code','model','name','console','site'))
+    items=[a]
+    if payload.get('apply_to_similar') is True:
+     items += [x for x in q['assets'] if x['id']!=a['id'] and not x.get('excluded')
+       and not(x.get('selected') and x['selected'].get('price_origin')!='staff-guided-estimate')
+       and tuple(str(x.get(k,'')) for k in ('code','model','name','console','site'))==original]
+    for item in items:
+     item['selected']=dict(option)
+     item['match_type']='Draft source RRP guide - configuration unverified'
+     item['issues']=['Source-price guide only. Exact SKU, console, finish and rate require pricing manager approval.']
+     item['match_confidence']=0
+     item['guide_reference']={'source':'2026 Master RRP','example_sku':source_reference,'console_key':band['key'],
+         'rrp':rrp,'reviewed_by':actor(request)['username']}
+    q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
+    result=public(persist(q))
+    record_event(id,actor(request)['username'],'UNAPPROVED_RRP_GUIDE',
+      f"Draft family {model}, reference {source_reference}, console band {band['key']}, "+
+      f"RRP GBP {rrp}, {len(items)} source rows; never customer-approved.")
+    return result
 
 @app.post('/api/quotes/{id}/resolve')
 async def resolve(id:str,request:Request):
