@@ -80,7 +80,7 @@ def group_key(asset,price=None):
             key(asset.get('console')),key(description),key(asset.get('make')),
             key(sel.get('sku')),key(sel.get('service_key')),
             key(sel.get('console')),key(asset.get('manual_annual_unit')),
-            key(asset.get('excluded')),key(asset.get('exclusion_reason')),
+            key(asset.get('excluded')),key(asset.get('exclusion_reason')),key(asset.get('contract_note')),
             key((price or {}).get('unit')),key((price or {}).get('basis')),
             key(asset.get('qty_issue')))
 

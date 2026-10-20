@@ -66,33 +66,30 @@ def create_quote_pdf(q):
  tier=q.get('tier','Gold');pkg=PACKAGES.get(tier,PACKAGES['Gold'])
  summaryrow=table_base([[P(f'<b>Maintenance Agreement:</b> {e(tier)}'),P(f'<b>Agreement Term:</b> {e(s["term"])} year(s)'),P(f'<b>Planned Service Visits:</b> {e(q.get("visits",1))} / year')]],[75*mm,51*mm,54*mm], [('BOX',(0,0),(-1,-1),.45,BORDER)],padding=5)
  story.append(summaryrow);story.append(Spacer(1,2*mm))
- columns=['Line','Item Code','Description','Quantity','Unit Price','Net']
- widths=[12*mm,30*mm,74*mm,17*mm,23*mm,24*mm]
+ # Customer-facing schedule follows the supplied maintenance agreement (Schedule 3):
+ # machine, description, quantity and serial number(s), with a single overall
+ # contract total. Individual internal RRP and tariff figures stay in the editor.
+ columns=['Machine','Description','Qty','Serial Number(s)']
+ widths=[28*mm,83*mm,15*mm,54*mm]
  line_items=[[P('<b>'+x+'</b>','invHead') for x in columns]]
  costs={a['id']:a['price'] for a in s['lines']}
  display_groups=[g for g in grouped_assets(q.get('assets',[]),costs) if not g['representative'].get('excluded')]
  includes=[a for a in q.get('assets',[]) if not a.get('excluded')]
  for i,g in enumerate(display_groups,1):
-  a=g['representative'];sel=a.get('selected') or {};cost=g['price'];label=(a.get('display_name') or a.get('name') or sel.get('name') or 'Unresolved equipment')
-  extra=[]
-  m=sel.get('model') or a.get('model')
-  con=(a.get('console') or (sel.get('console_display') if sel.get('console_status') in ('source','description_only') else '')) or ''
-  if m and not sel:extra.append('Model: '+e(m))
-  if con and con not in ('Not Applicable',) and 'console' not in label.lower():extra.append('Console: '+e(con))
-  if g['serials']:extra.append(('Serial: '+e(g['serials'][0])) if len(g['serials'])==1 else f"{len(g['serials'])} serials retained in attached asset schedule")
-  sites={str(v.get('site','')).strip() for v in q.get('assets',[]) if str(v.get('site','')).strip()}
-  if len(sites)>1 and a.get('site'):extra.append('Site: '+e(a['site']))
-  if sel.get('price_origin')=='historic-family-estimate':
-   extra.append('Indicative price basis: reference model '+e(sel.get('reference_model',''))+' (not confirmed exact SKU)')
-  if cost and cost.get('basis')=='historic-reference':
-   extra.append('HISTORIC RRP ONLY - update price before issuing a customer quote')
-  description=P(e(label)+('<br/><font color="#536166" size="6.6">'+' · '.join(extra)+'</font>' if extra else ''),'invCell')
-  sku=a.get('code') or sel.get('sku') or sel.get('model') or '—'
-  line_items.append([P(str(i),'invCell'),P(e(sku),'invCell'),description,P(str(g['qty']),'invCell'),P(gbp(cost['unit']) if cost else 'TBC','invCell'),P(gbp(cost['annual']) if cost else 'TBC','invCell')])
- if not includes:line_items.append([P('—')]*6)
+  a=g['representative'];sel=a.get('selected') or {}
+  label=a.get('display_name') or a.get('name') or sel.get('name') or 'Unresolved equipment'
+  note=a.get('contract_note') or ''
+  description=P(e(label)+('<br/><font color="#536166" size="7">'+e(note)+'</font>' if note else ''),'invCell')
+  # A model-family guide never silently becomes an exact physical SKU.
+  sku=a.get('code') or a.get('model') or sel.get('model') or '—'
+  serials=[str(n) for n in g['serials'] if str(n).strip()]
+  serial_text=', '.join(serials) if serials else 'Not provided'
+  line_items.append([P(e(sku),'invCell'),description,P(str(g['qty']),'invCell'),P(e(serial_text),'invCell')])
+ if not includes:line_items.append([P('—')]*4)
  lines=Table(line_items,colWidths=widths,repeatRows=1,hAlign='LEFT')
  lines.setStyle(TableStyle([('BOX',(0,0),(-1,0),.7,BORDER),('LINEBELOW',(0,0),(-1,0),.7,BORDER),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,0),6),('BOTTOMPADDING',(0,0),(-1,0),6),('TOPPADDING',(0,1),(-1,-1),3),('BOTTOMPADDING',(0,1),(-1,-1),4),('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),('LINEBELOW',(0,1),(-1,-1),.25,HexColor('#DDDDDD'))]))
  story.append(lines)
+ story.append(P('The equipment schedule lists the covered machines and serial numbers. Internal unit pricing and catalogue reference details are not displayed here.','invMuted'))
  if s['priced_rows']!=len(includes):story.append(P('<b>INCOMPLETE QUOTATION: unpriced equipment must be resolved or formally excluded.</b>','invWarning'))
  historic_only=sum(1 for a in includes if costs.get(a['id']) and costs[a['id']].get('basis')=='historic-reference')
  if historic_only:story.append(P(f'<b>DRAFT PRICING: {historic_only} lines use an OLD RRP reference, not a current approved sales price. Do not issue until revalidated.</b>','invWarning'))
@@ -121,19 +118,10 @@ def create_quote_pdf(q):
  story.append(KeepTogether(notes))
  story.append(Spacer(1,2*mm))
  story.append(P('<b>Prepared by:</b> '+e(q.get('prepared_by') or 'Pulse Fitness Aftersales')+' &nbsp;&nbsp; | &nbsp;&nbsp; <b>For enquiries:</b> +44 (0)1260 294600 · info@pulsefitness.com','invMuted'))
- # A separate technical asset schedule retains every imported serial, source row,
- # original description and identification. It never inflates the quote lines.
- if any(len(g['assets'])>1 for g in display_groups):
-  story.append(PageBreak());story.append(P('<b>Equipment asset schedule — source detail</b>','invHead'))
-  story.append(P('The quotation groups identical equipment for readability. Every original machine below remains individually traceable; the schedule is part of this draft.','invSmall'))
-  for line_no,g in enumerate(display_groups,1):
-   a=g['representative'];story.append(P('<b>Line '+str(line_no)+' · '+e(a.get('name') or a.get('model') or a.get('code') or 'Unidentified')+' · '+str(g['qty'])+' units</b>','invSmall'))
-   rows=[[P('<b>Sheet / row</b>','invHead'),P('<b>Asset ID</b>','invHead'),P('<b>Serial number</b>','invHead'),P('<b>Original description / install date</b>','invHead')]]
-   for detail in g['assets']:
-    rows.append([P(e(str(detail.get('source_sheet') or '')+' / '+str(detail.get('source_row') or '')),'invSmall'),P(e(detail.get('asset_tag') or '—'),'invSmall'),P(e(detail.get('serial') or '—'),'invSmall'),P(e(detail.get('source_description') or '—')+(' · Installed '+e(detail.get('install_date')) if detail.get('install_date') else ''),'invSmall')])
-   tab=Table(rows,colWidths=[30*mm,23*mm,39*mm,88*mm],repeatRows=1,hAlign='LEFT')
-   tab.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,0),.4,BORDER),('LINEBELOW',(0,1),(-1,-1),.2,HexColor('#DDDDDD')),('BOTTOMPADDING',(0,0),(-1,-1),3),('TOPPADDING',(0,0),(-1,-1),3)]))
-   story.append(tab);story.append(Spacer(1,2*mm))
+ # The customer sees the compact covered-equipment Schedule 3 above.
+ # Original spreadsheet provenance remains losslessly stored in the quote and
+ # in the separate downloadable asset register CSV; it is not attached to the
+ # customer PDF. The main schedule already lists every available serial number.
 
  def headerfooter(c,doc):
   c.saveState();w,h=A4

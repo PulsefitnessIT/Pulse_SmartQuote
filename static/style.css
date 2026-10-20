@@ -174,3 +174,27 @@ button:disabled{cursor:not-allowed;opacity:.6}
 .advanced-equipment-matches{border:1px solid #dce5f0;background:#f9fbff;border-radius:9px;padding:12px;margin:14px 0}
 .advanced-equipment-matches>summary{cursor:pointer;font-weight:700;color:#246597;font-size:13px}
 @media(max-width:700px){.staff-console-choices{grid-template-columns:1fr}.staff-quick-price{padding:12px}}
+
+/* V10 staff review: compact contract rows and genuine radio-button dimensions. */
+.asset-table .contract-machine{min-width:155px}.asset-table .contract-machine>b{display:block;font-size:14px;color:#13344d}
+.asset-table .machine-serials{display:block;margin-top:7px;font-size:11px;line-height:1.55;color:#52677f;overflow-wrap:anywhere;white-space:normal}
+.asset-table .contract-description>b{display:block;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.staff-quick-price input[type=radio],.staff-quick-price input[type=checkbox]{width:17px!important;height:17px!important;min-width:17px!important;min-height:17px!important;max-width:17px!important;max-height:17px!important;padding:0!important;margin:2px 0 0!important;flex:0 0 17px!important;appearance:auto!important}
+.staff-console-choice,.staff-price-option{min-width:0!important;width:auto!important;min-height:0!important;box-sizing:border-box;display:flex!important;align-items:flex-start!important;gap:10px!important;overflow-wrap:anywhere}
+.staff-console-choice span,.staff-price-option span{min-width:0!important;width:auto!important;flex:1;display:block;word-break:normal;overflow-wrap:anywhere}
+.staff-console-choice small,.staff-price-option small{margin-top:3px;overflow-wrap:anywhere}
+.staff-console-choices{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+.staff-console-details{margin:10px 0;padding:9px 11px;border:1px solid #d7e3ed;background:#fff;border-radius:9px}
+.staff-console-details summary{cursor:pointer;color:#20577e;font-size:13px;font-weight:750}
+.staff-console-details[open] summary{margin-bottom:11px}
+.standard-machine-guide{padding:13px;border:1px solid #b9d7e8;border-radius:9px;background:#fff;margin:13px 0}
+.standard-machine-guide b{display:block;font-size:14px}.standard-machine-guide p{margin:7px 0;font-size:13px}
+.standard-machine-guide small{display:block;font-size:11px;line-height:1.5}.standard-machine-guide button{margin-top:12px;max-width:100%;white-space:normal}
+.technical-asset-details{margin:14px 0;padding:11px 13px;border:1px solid #dde5eb;border-radius:8px;background:#f7f9fc}
+.technical-asset-details summary{cursor:pointer;font-size:13px;font-weight:750;color:#225b82}
+.technical-asset-inner{padding-top:6px;font-size:12px;line-height:1.55;color:#44566b;overflow-wrap:anywhere}
+.technical-asset-inner p{margin:7px 0}
+@media(max-width:700px){.staff-console-choices{grid-template-columns:1fr}}
+
+.contract-note-all{display:flex!important;align-items:flex-start;gap:9px;font-size:12px!important;line-height:1.5;margin:9px 0 13px;color:#314c68}
+.modal-card .contract-note-all input[type=checkbox]{width:17px!important;height:17px!important;flex:0 0 17px!important;margin:1px 0!important;padding:0!important}

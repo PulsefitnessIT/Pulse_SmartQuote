@@ -497,24 +497,31 @@ async def apply_quick_price(id:str,request:Request):
         raise HTTPException(409,'This equipment already has a confirmed selection. Use Edit line to change it.')
     if payload.get('acknowledge_guide_only') is not True:
         raise HTTPException(400,'Confirm this is a non-approved draft guide before continuing.')
-    if payload.get('console_verified') is not True:
-        raise HTTPException(400,'Confirm the installed console status before selecting this guide.')
+    standard_unconfirmed=payload.get('standard_unconfirmed') is True
+    if payload.get('console_verified') is not True and not standard_unconfirmed:
+        raise HTTPException(400,'Confirm the installed console status, or use the unverified standard-model draft option.')
     try:
         chosen,band,entry=quick_guide.picked(a,str(payload.get('example_sku','')).upper(),
             str(payload.get('console_key','')),q.get('tier','Gold'),q.get('discount',0),
             eng.PRICING['tiers'],{k:v['standard'] for k,v in eng.RATES.items()})
     except (ValueError,TypeError) as exc:raise HTTPException(400,str(exc))
+    if standard_unconfirmed:
+        baseline=chosen.get('standard_reference')
+        if not baseline or str(payload.get('example_sku','')).upper()!=baseline['example_sku'] or str(payload.get('console_key',''))!='not-listed' or a.get('console'):
+            raise HTTPException(400,'Only a qualifying model-AAA standard reference can be used without a confirmed console.')
+        if payload.get('console_verified') is True:
+            raise HTTPException(400,'Do not mark an unknown console as physically verified.')
     # The supplier master lists many finish/upholstery SKUs for identical machines.
     # Never claim that the chosen source example is the physical equipment SKU.
     source_reference=entry['example_sku']; model=chosen['model']; rrp=entry['rrp']
     rate_group='Treadmill / Elliptical' if chosen['rate_fraction']==eng.RATES['Treadmill / Elliptical']['standard'] else 'Standard Equipment'
     option={'sku':'','service_key':'','model':model,'name':a.get('name') or entry['example_name'],
-      'console':band['label'] if band['key']!='not-listed' else 'Not specified in source',
+      'console':band['label'] if band['key']!='not-listed' else 'Console not confirmed',
       'console_status':'unverified','rrp':rrp,'rate_group':rate_group,
       'price_origin':'staff-guided-estimate','eligible':'Estimate - approval required',
       'approved':'Not approved','pricing_rule':'Provisional 2026 source RRP and maintenance tariff',
       'console_pricing':1,'reference_sku':source_reference,
-      'reason':'Family-level draft guidance: finish/SKU not verified'}
+      'reason':'Family-level draft guidance: exact SKU and console not verified'}
     original=tuple(str(a.get(k,'')) for k in ('code','model','name','console','site'))
     items=[a]
     if payload.get('apply_to_similar') is True:
@@ -523,16 +530,17 @@ async def apply_quick_price(id:str,request:Request):
        and tuple(str(x.get(k,'')) for k in ('code','model','name','console','site'))==original]
     for item in items:
      item['selected']=dict(option)
-     item['match_type']='Draft source RRP guide - configuration unverified'
-     item['issues']=['Source-price guide only. Exact SKU, console, finish and rate require pricing manager approval.']
+     item['match_type']='Standard family reference (console unconfirmed)' if standard_unconfirmed else 'Draft source RRP guide - configuration unverified'
+     item['issues']=['Source-price guide only. Installed console and exact SKU unconfirmed; tariff requires pricing manager approval.']
      item['match_confidence']=0
      item['guide_reference']={'source':'2026 Master RRP','example_sku':source_reference,'console_key':band['key'],
-         'rrp':rrp,'reviewed_by':actor(request)['username']}
+         'rrp':rrp,'reviewed_by':actor(request)['username'],
+         'standard_unconfirmed':standard_unconfirmed}
     q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
     result=public(persist(q))
     record_event(id,actor(request)['username'],'UNAPPROVED_RRP_GUIDE',
       f"Draft family {model}, reference {source_reference}, console band {band['key']}, "+
-      f"RRP GBP {rrp}, {len(items)} source rows; never customer-approved.")
+      f"RRP GBP {rrp}, {len(items)} source rows, console unconfirmed={standard_unconfirmed}; never customer-approved.")
     return result
 
 @app.post('/api/quotes/{id}/resolve')
@@ -599,6 +607,12 @@ async def edit_asset(id:str,aid:str,request:Request):
     if not 0<manual<=1000000:raise ValueError()
    except:raise HTTPException(400,'Enter a positive annual unit price up to £1,000,000, or clear the manual rate.')
  if 'excluded' in data and not isinstance(data['excluded'],bool):raise HTTPException(400,'Invalid include/exclude setting.')
+ # Contract notes are group-scoped for matching physical machines at the same
+ # site. Never cross site, model, console, selection, excluded state or cost.
+ def note_key(row):
+  selected=row.get('selected') or {}
+  return tuple(str(row.get(k,'')).strip().casefold() for k in ('site','code','model','name','console','make','manual_annual_unit','excluded','contract_note'))+(str(selected.get('sku','')).upper(),str(selected.get('reference_sku','')).upper())
+ same_note_key=note_key(asset)
  identity_changed=any(str(data.get(f,asset.get(f,''))).strip()!=str(asset.get(f,'')).strip() for f in ('code','model','console','name','make'))
  if identity_changed:
   if not asset.get('imported_code'):asset['imported_code']=asset.get('code','')
@@ -606,10 +620,14 @@ async def edit_asset(id:str,aid:str,request:Request):
   for f in ('code','model','console','name','make'):
    if f in data:asset[f]=str(data[f])[:250].strip()
   asset.update(match_asset(asset))
- for f in ('serial','site','display_name','manual_price_source','exclusion_reason'):
+ for f in ('serial','site','display_name','contract_note','manual_price_source','exclusion_reason'):
   if f in data:asset[f]=str(data[f])[:500].strip()
+ if data.get('note_to_same_group') is True and 'contract_note' in data and not identity_changed:
+  for other in q['assets']:
+   if other is not asset and note_key(other)==same_note_key:
+    other['contract_note']=asset.get('contract_note','')
  if 'qty' in data:
-  asset['qty']=qty;asset['qty_issue']=''
+  asset['qty']=qty;asset['qty_issue']='' 
  if 'manual_annual_unit' in data:asset['manual_annual_unit']=manual
  if 'excluded' in data:asset['excluded']=data['excluded']
  # A documented manual price is deliberately not an auto-catalogue approval.

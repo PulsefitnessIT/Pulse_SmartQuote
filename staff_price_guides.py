@@ -91,12 +91,26 @@ def guide(asset,tier='Gold',discount=0,tiers=None,rates=None):
   result.append({'key':band,'label':labels.get(band,band),'variants':len(entries),'prices':options,
     'min_monthly_unit':options[0]['guide_monthly_unit'],'max_monthly_unit':options[-1]['guide_monthly_unit'],
     'min_rrp':prices[0],'max_rrp':prices[-1]})
+ # For bare strength/model-family codes offer the standard catalogue reference.
+ # A colour-only AAA variant is a PRICE REFERENCE, not an assertion that the
+ # customer's installed machine has that exact SKU or has no console.
+ standard=None
+ raw_code=_clean(asset.get('code')).upper()
+ raw_name=_clean(asset.get('name')).lower()
+ if not _clean(asset.get('console')) and raw_code in ('',model) and not re.search(r'\bifi\b|inclusive|platform|special|attachment|touchscreen',raw_name):
+  candidate=next((x for x in choices if x['sku']==model+'-AAA' and x['console_key']=='not-listed'),None)
+  if candidate:
+   standard={'example_sku':candidate['sku'],'rrp':candidate['rrp'],
+     'console_key':'not-listed','guide_monthly_unit':_money(candidate['rrp']*factor),
+     'basis':'STANDARD_FAMILY_REFERENCE_UNVERIFIED',
+     'notice':'Standard model-family pricing reference only; console, attachments and actual SKU not verified.'}
  minimum=min(v['min_monthly_unit'] for v in result)
  maximum=max(v['max_monthly_unit'] for v in result)
  return {'model':model,'source':'Full Master Price List 24-08-2026.xlsx',
   'basis':'Provisional maintenance guide from source RRP and unapproved tariff, not a verified exact configuration',
   'status':'GUIDE_ONLY','console_unconfirmed':not bool(_clean(asset.get('console'))),
   'min_monthly_unit':minimum,'max_monthly_unit':maximum,'bands':result,
+  'standard_reference':standard,
   'rate_fraction':pct,'tier':tier,'discount':float(discount),
   'notice':'Guide price only. Exact console, finish, SKU, source RRP and contract tariff require commercial confirmation.'}
 
