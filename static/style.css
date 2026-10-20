@@ -198,3 +198,11 @@ button:disabled{cursor:not-allowed;opacity:.6}
 
 .contract-note-all{display:flex!important;align-items:flex-start;gap:9px;font-size:12px!important;line-height:1.5;margin:9px 0 13px;color:#314c68}
 .modal-card .contract-note-all input[type=checkbox]{width:17px!important;height:17px!important;flex:0 0 17px!important;margin:1px 0!important;padding:0!important}
+
+/* Clear six-column sorting and properly positioned identical-machine scope. */
+.asset-table th .asset-sort-btn{display:inline-flex;align-items:center;justify-content:flex-start;gap:6px;padding:4px 1px;border:0;border-radius:4px;background:transparent;color:inherit;font-weight:800;font-size:inherit;line-height:1.4;text-align:left;white-space:normal;cursor:pointer}
+.asset-table th .asset-sort-btn:hover,.asset-table th .asset-sort-btn:focus-visible{color:#00759b;outline:2px solid #8accdf;outline-offset:2px}
+.asset-sort-arrow{color:#1284a4;font-size:12px;font-weight:900;white-space:nowrap}
+.modal-card .scope-checkbox-row{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;gap:10px!important;width:100%;max-width:100%;padding:12px 13px;margin:16px 0 8px!important;border:1px solid #c9dce9;border-radius:9px;background:#f2f8fc;color:#264b63;line-height:1.4;font-size:12px}
+.modal-card .scope-checkbox-row input[type=checkbox]{width:17px!important;height:17px!important;min-width:17px!important;max-width:17px!important;flex:0 0 17px!important;margin:0!important;padding:0!important;appearance:auto!important}
+.modal-card .scope-checkbox-row span{min-width:0;flex:1}

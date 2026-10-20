@@ -1,5 +1,5 @@
 /* Pulse SmartQuote: offline-friendly frontend, no third-party scripts. */
-let state={quote:null,summary:null,bootstrap:null,view:'builder',filter:'all',groups:[],token:sessionStorage.getItem('smartquote_token'),user:null};
+let state={quote:null,summary:null,bootstrap:null,view:'builder',filter:'all',sort:{key:null,direction:'asc'},groups:[],token:sessionStorage.getItem('smartquote_token'),user:null};
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'£'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
 const toast=(message,error=false)=>{const t=$('toast');t.innerText=message;t.className='toast'+(error?' error':'');setTimeout(()=>{t.className='toast hidden'},5000)};
@@ -48,6 +48,38 @@ async function launchWorkspace(){
 async function newQuote(){const d=await api('/api/quotes',{method:'POST'});apply(d);localStorage.setItem('pulse_quote_id',d.quote.id);render();showView('builder')}
 function apply(data){state.quote=data.quote;state.summary=data.summary;state.groups=data.display_groups||[]}
 function viewData(){return {q:state.quote,s:state.summary}}
+function sortEquipmentGroups(groups, priceById, summaryLines){
+ const spec=state.sort||{};if(!spec.key)return groups;
+ const collator=new Intl.Collator('en-GB',{numeric:true,sensitivity:'base'});
+ const guides=Object.fromEntries(summaryLines.map(line=>[line.id,line.guide]));
+ function getValue(g){
+  const a=g.representative||{},price=g.price||priceById[a.id],guide=guides[a.id];
+  switch(spec.key){
+   case 'machine':return a.code||a.model||'';
+   case 'description':return a.display_name||a.name||'';
+   case 'qty':return Number(g.qty)||0;
+   case 'unit':return price?Number(price.unit)/12:guide?Number(guide.min_monthly_unit):null;
+   case 'annual':return price?Number(price.annual):guide?Number(guide.min_monthly_unit)*Number(g.qty)*12:null;
+   case 'status':return a.excluded?'Excluded':a.qty_issue?'Check quantity':!price?'Needs a price':price.basis==='staff-guided-estimate'?'Draft - review':'Priced';
+   default:return '';
+  }
+ }
+ return groups.map((g,i)=>({g,i,value:getValue(g)})).sort((a,b)=>{
+  if(a.value==null&&b.value!=null)return 1;
+  if(b.value==null&&a.value!=null)return -1;
+  let cmp=typeof a.value==='number'&&typeof b.value==='number'?a.value-b.value:collator.compare(String(a.value??''),String(b.value??''));
+  return cmp?(spec.direction==='desc'?-cmp:cmp):a.i-b.i;
+ }).map(item=>item.g);
+}
+function bindAssetSort(){
+ document.querySelectorAll('[data-asset-sort]').forEach(button=>{
+  const key=button.dataset.assetSort;
+  button.onclick=()=>{const old=state.sort||{};state.sort={key,direction:old.key===key&&old.direction==='asc'?'desc':'asc'};render()};
+  const active=state.sort?.key===key;
+  button.querySelector('.asset-sort-arrow').textContent=active?(state.sort.direction==='asc'?'↑':'↓'):'↕';
+  button.parentElement.setAttribute('aria-sort',active?(state.sort.direction==='asc'?'ascending':'descending'):'none');
+ });
+}
 function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').textContent=q.quote_no;$('summaryCode').textContent=q.quote_no;$('pipelineStatus').value=q.pipeline_status||'Draft';$('pipelineNote').value=q.pipeline_note||'';
  ['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{if($(k))$(k).value=(k==='valid_days'?q[k]??30:q[k]??'')});
  $('tierOptions').innerHTML=Object.entries(state.bootstrap.packages).map(([tier,p])=>`<button class="tier-card ${q.tier===tier?'active':''}" data-tier="${tier}"><span>${tier==='Silver'?'ESSENTIAL':tier==='Gold'?'RECOMMENDED':'COMPREHENSIVE'}</span><strong>${esc(tier)}</strong><small>${esc(p.subtitle)}</small></button>`).join('');
@@ -61,26 +93,27 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  const renewal=q.renewal||null;const rb=$('renewalBanner');rb.classList.toggle('hidden',!renewal);
  if(renewal){rb.innerHTML=`<b>Renewal imported:</b> ${esc(renewal.agreement_ref||'Previous agreement')} · ${esc(renewal.previous_package||'')} cover · Previous annual charge ${esc(renewal.previous_annual||'unknown')} · Ends ${esc(renewal.previous_end||'unknown')}.<br><small>Equipment is priced afresh using today's SmartQuote catalogue; the old total is a comparison only.</small>${renewal.fixed_price_extension?'<div class="contract-issue">Important: the previous agreement offers an extension at the SAME annual price. Check whether the customer is entitled to exercise this option before proposing different pricing.</div><label><input type="checkbox" id="renewalOptionChecked" '+(q.renewal_option_checked?'checked':'')+'> I have checked the existing fixed-price extension option and confirmed how to proceed.</label>':''}`;const checkbox=$('renewalOptionChecked');if(checkbox)checkbox.onchange=()=>saveDetails(true)}
  const pmap=Object.fromEntries(s.lines.map(l=>[l.id,l.price]));
- const needs=a=>(!a.excluded&&(!pmap[a.id]||pmap[a.id]?.basis==='historic-reference'||a.qty_issue)) || (a.excluded&&!(a.exclusion_reason||'').trim());
+ const needs=a=>(!a.excluded&&(!pmap[a.id]||pmap[a.id]?.basis==='historic-reference'||pmap[a.id]?.basis==='staff-guided-estimate'||a.qty_issue)) || (a.excluded&&!(a.exclusion_reason||'').trim());
  const todo=q.assets.filter(needs);
  $('reviewIssuesCount').textContent=todo.length;
  $('reviewAll').classList.toggle('active',state.filter==='all');$('reviewIssues').classList.toggle('active',state.filter==='issues');
  const displayed=state.groups.length?state.groups:q.assets.map(a=>({representative:a,qty:a.qty,ids:[a.id],serials:a.serial?[a.serial]:[],source_rows:[a.source_row],price:pmap[a.id]}));
- const shown=state.filter==='issues'?displayed.filter(g=>g.ids.some(id=>todo.some(a=>a.id===id))):displayed;
+ const filtered=state.filter==='issues'?displayed.filter(g=>g.ids.some(id=>todo.some(a=>a.id===id))):displayed;
+ const shown=sortEquipmentGroups(filtered,pmap,s.lines);bindAssetSort();
  $('assetBody').innerHTML=shown.length?shown.map(g=>{
   const a={...g.representative,qty:g.qty};
   const selected=a.selected,pr=g.price;
   const guideRow=s.lines.find(line=>line.id===a.id);
   const guide=guideRow?.guide;
   const guideText=guide?guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit):money(guide.min_monthly_unit)+'–'+money(guide.max_monthly_unit):'';
-  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'Needs a price':pr.basis==='staff-guided-estimate'?'Draft guide':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
-  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
+  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'Needs a price':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
+  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='staff-guided-estimate'||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
   const identifier=a.code||a.model||selected?.model||'Model not supplied';
   const name=a.display_name||a.name||selected?.name||'Equipment description not supplied';
   const serials=(g.serials||[]).filter(Boolean);
   const serialText=serials.length?serials.join(', '):'Not provided';
-  const shortPrice=a.excluded?'—':pr?money(pr.unit/12):guide?`Guide ${guideText}`:'TBC';
-  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b>${esc(name)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Draft · source RRP':pr?.basis==='staff-guided-estimate'?'Draft · not approved':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?money(pr.annual):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
+  const shortPrice=a.excluded?'—':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.unit/12):money(pr.unit/12)):guide?`Guide ${guideText}`:'TBC';
+  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b>${esc(name)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='staff-guided-estimate'?'Source RRP · tariff provisional':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
  }).join(''):'<tr><td colspan="6" class="empty-table">'+(state.filter==='issues'?'All included equipment has a price. Choose All equipment or generate your PDF.':'Drop in an asset list or try the sample import to begin.')+'</td></tr>';
  document.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>review(b.dataset.review));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeAsset(b.dataset.delete));
  let matched=q.assets.filter(a=>a.selected&&!a.excluded).length,excluded=q.assets.filter(a=>a.excluded).length;
@@ -180,7 +213,7 @@ async function undoLastImport(){
   apply(result);state.filter='all';render();toast(`Undid ${result.undone_rows} asset rows from ${result.filename}.`);
  }catch(e){toast(e.message,true)}
 }
-function issueAssets(){const cost=Object.fromEntries(state.summary.lines.map(x=>[x.id,x.price]));return state.quote.assets.filter(a=>!a.excluded&&(!cost[a.id]||a.qty_issue))}
+function issueAssets(){const cost=Object.fromEntries(state.summary.lines.map(x=>[x.id,x.price]));return state.quote.assets.filter(a=>!a.excluded&&(!cost[a.id]||cost[a.id]?.basis==='staff-guided-estimate'||a.qty_issue))}
 function reviewNext(afterId=null){const list=issueAssets();let next=list[0];if(afterId){const all=state.quote.assets,ix=all.findIndex(a=>a.id===afterId);next=all.slice(ix+1).concat(all.slice(0,ix+1)).find(a=>list.some(t=>t.id===a.id));}if(next)review(next.id);else{$('modal').classList.add('hidden');toast('All included equipment is priced. Finish the customer details and generate the quote.');}}
 function review(id){
  const a=state.quote.assets.find(x=>x.id===id);if(!a)return;
@@ -189,7 +222,7 @@ function review(id){
  const idx=state.quote.assets.findIndex(x=>x.id===id);
  const problems=a.issues||[];
  const price=state.summary.lines.find(l=>l.id===a.id)?.price;
- const priced=!!price&&!a.qty_issue;const issueHtml=a.qty_issue?`<div class="issue-banner"><b>Check imported quantity</b><p>${esc(a.qty_issue)}</p></div>`:priced?`<div class="editor-help"><b>${a.selected?.price_origin==='historic-family-estimate'?'Indicative historic-family estimate — verify old SKU / console.':'Price ready.'}</b> This machine has a calculated amount in the draft. You can still change its details below.${a.selected?.reference_warning?'<br>'+esc(a.selected.reference_warning):''}</div>`:problems.length?`<div class="issue-banner"><b>Machine or price missing</b><ul>${problems.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'<div class="editor-help">Search for the machine to calculate its cost.</div>';
+ const priced=!!price&&!a.qty_issue;const issueHtml=a.qty_issue?`<div class="issue-banner"><b>Check imported quantity</b><p>${esc(a.qty_issue)}</p></div>`:priced?`<div class="editor-help"><b>${price?.basis==='staff-guided-estimate'?'Draft price calculated from source RRP — review the installed configuration and tariff.':a.selected?.price_origin==='historic-family-estimate'?'Indicative historic-family estimate — verify old SKU / console.':'Price ready.'}</b> This machine has a calculated amount in the draft. You can still change its details below.${a.selected?.reference_warning?'<br>'+esc(a.selected.reference_warning):''}</div>`:problems.length?`<div class="issue-banner"><b>Machine or price missing</b><ul>${problems.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'<div class="editor-help">Search for the machine to calculate its cost.</div>';
  const options=[...(a.selected?[a.selected]:[]),...(a.candidates||[])];
  const choices=options.map((v,i)=>`<div class="match-choice"><div><b>${esc(v.name||'Unknown equipment')}</b><p>${esc(v.sku||v.service_key||'No SKU')} · ${esc(v.console_display||v.console||'Console unknown')} · RRP ${v.rrp?money(v.rrp):'not supplied'}</p></div>${v.price_origin==='historic-family-estimate'?'<span class="editor-hint">Family-price reference only. Search for a verified machine to replace it.</span>':`<button data-choose="${i}" ${v.duplicate_sku?'disabled title="Conflicting duplicate SKU"':''}>${a.selected&&i===0?'Reconfirm':'Confirm this machine'}</button>`}</div>`).join('');
  $('modalContent').innerHTML=`<div class="edit-toolbar"><span>LINE ${idx+1} OF ${state.quote.assets.length} · ORIGINAL SPREADSHEET ROW ${esc(a.source_row)}</span><button id="editorNext" class="secondary-btn" type="button">Next unpriced line →</button></div>${issueHtml}
@@ -218,7 +251,7 @@ function review(id){
   <div class="exclude-box"><label class="edit-check"><input type="checkbox" id="modalExclude" ${a.excluded?'checked':''}> Exclude this machine from the maintenance quotation</label><div id="excludeFields" class="${a.excluded?'':'hidden'}"><label>Reason for exclusion <span class="required-label">(required)</span><input id="modalExcludeReason" value="${esc(a.exclusion_reason||'')}" placeholder="e.g. Customer declined cover for this machine"></label><p class="editor-hint">Excluded equipment remains traceable and will be shown separately on the PDF. It contributes £0 to the quote.</p></div></div>
   <div class="editor-actions"><button class="secondary-btn" id="modalCancel">Close without saving</button><button class="secondary-btn" id="modalSaveNext">Save & next unpriced line →</button><button class="primary-btn" id="modalSave">Save changes ✓</button></div>`;
  const same=state.quote.assets.filter(b=>!b.excluded&&b.id!==a.id&&b.name===a.name&&b.model===a.model&&b.code===a.code&&b.console===a.console&&b.site===a.site);
- if(same.length){$('modalContent').insertAdjacentHTML('beforeend',`<label class="checkline"><input id="bulkSameEquipment" type="checkbox" checked> Apply this catalogue choice to ${same.length} other identical machine(s) at this site (each serial number stays separate)</label>`)}
+ if(same.length){$('modalContent').querySelector('.editor-actions').insertAdjacentHTML('beforebegin',`<label class="checkline scope-checkbox-row"><input id="bulkSameEquipment" type="checkbox" checked><span>Apply this choice to ${same.length} other identical machine(s) at this site. Serial numbers stay separate.</span></label>`)}
  document.querySelectorAll('[data-choose]').forEach(b=>b.onclick=()=>choose(a,options[Number(b.dataset.choose)]));
  $('modalFind').onclick=()=>searchModal(a);$('modalSearch').onkeydown=e=>{if(e.key==='Enter')searchModal(a)};
  $('modalSave').onclick=()=>updateAsset(a,false);$('modalSaveNext').onclick=()=>updateAsset(a,true);
@@ -228,10 +261,19 @@ function review(id){
  $('modal').classList.remove('hidden');
  loadSmartReview(a);
 }
-function showStaffQuickPrice(asset,guide,group){
+function showStaffQuickPrice(asset,guide,group,showAlternatives=false){
  const panel=$('staffQuickPrice');if(!panel)return;
  if(!guide || guide.status!=='GUIDE_ONLY'){
   panel.innerHTML='<b>Step 1 · Identify the machine</b><p class="editor-hint">No current equivalent was found for this model. Use full catalogue search below or ask the pricing manager to identify it.</p>';
+  return;
+ }
+ const calculated=state.summary?.lines.find(line=>line.id===asset.id)?.price;
+ if(calculated?.basis==='staff-guided-estimate'&&calculated.preview_confidence==='exact_source_configuration'&&!showAlternatives){
+  panel.innerHTML=`<div class="standard-machine-guide"><b>Price calculated from this machine's detailed description</b>
+   <p><strong>${money(calculated.unit/12)} per month / machine</strong> · ${money(calculated.annual)} per year (for ${asset.qty||1} unit${asset.qty===1?'':'s'})</p>
+   <small>August 2026 source RRP ${money(calculated.rrp)} · Reference variant ${esc(calculated.reference_sku)}. The console size and features identify one source-price configuration, but the physical SKU and maintenance tariff still need checking.</small>
+   <button type="button" id="staffChangeSourceConfiguration" class="secondary-btn">Change or confirm console configuration →</button></div>`;
+  panel.querySelector('#staffChangeSourceConfiguration').onclick=()=>showStaffQuickPrice(asset,guide,group,true);
   return;
  }
  const count=group?.quantity||asset.qty||1;
@@ -249,10 +291,10 @@ function showStaffQuickPrice(asset,guide,group){
    </div>
   </details>
   <div class="staff-quick-step"><b>Choose a price basis (only when different from standard)</b><div id="staffQuickVariants"><small>Choose a configuration above to see source RRP price levels.</small></div></div>
-  <div class="staff-quick-footer"><label class="checkline"><input id="staffVerified" type="checkbox"> I have checked the installed configuration and understand this is an unapproved draft guide.</label>
+  <div class="staff-quick-footer"><label class="checkline"><input id="staffVerified" type="checkbox"> I have checked the installed configuration. This is a draft using the 2026 RRP; the maintenance tariff still needs commercial sign-off.</label>
    <label class="checkline"><input id="staffSimilar" type="checkbox" ${group?.count>1?'checked':''}> Apply to ${group?.count||1} identical imported row(s), preserving every serial number.</label>
    <button id="staffQuickApply" class="primary-btn" type="button" disabled>Use selected draft configuration</button>
-   <small>All guides remain blocked from customer-ready issue pending commercial review.</small></div>`;
+   <small>Why draft? The model RRP comes from the August 2026 master, but the Silver/Gold/Platinum rates have not yet been commercially approved. Staff can prepare the quote while pricing is reviewed.</small></div>`;
  let selectedPrice=null,selectedBand=null;
  const baselineButton=panel.querySelector('#staffApplyStandard');
  if(baselineButton)baselineButton.onclick=async()=>{

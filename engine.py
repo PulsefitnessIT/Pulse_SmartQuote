@@ -11,6 +11,7 @@ from renewal_pricing import family_reference
 from asset_intelligence import normalize_asset, grouped_assets
 from smart_candidates import family_code, suggest as suggest_review_candidates
 from staff_price_guides import guide as staff_guide
+from contract_pricing_preview import draft_reference as staff_draft_reference
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -619,6 +620,25 @@ def calc_quote(q):
   if a.get('qty_issue'):
    summary['issues'].append(f"Row {a.get('source_row','?')}: {a['qty_issue']}")
   price=price_line(a,level,tier,discount)
+  # A distinctive imported 2026 source configuration, or an explicitly
+  # permitted model-AAA strength baseline, can provide a numerical DRAFT
+  # without pretending we know the installed SKU or approving the tariff.
+  if price is None and not a.get('qty_issue') and a.get('manual_annual_unit') in (None,''):
+   reference=staff_draft_reference(a)
+   if reference:
+    name=' '.join((str(a.get('name') or ''),str(a.get('code') or ''),str(a.get('model') or ''))).lower()
+    rate_group=('Treadmill / Elliptical' if ('treadmill' in name or 'elliptical' in name or 'cross-trainer' in name) else 'Standard Equipment')
+    temporary={'model':reference['model'],'sku':'','name':a.get('name',''),
+       'rrp':reference['rrp'],'console':'Console not confirmed',
+       'rate_group':rate_group,'eligible':'Estimate - approval required',
+       'approved':'Not approved','price_origin':'staff-guided-estimate',
+       'reference_sku':reference['reference_sku'],
+       'pricing_rule':reference['basis'] if 'basis' in reference else 'Unapproved model-AAA standard reference'}
+    price=price_line({**a,'selected':temporary},level,tier,discount)
+    if price:
+     price['reference_sku']=reference['reference_sku']
+     price['preview_confidence']=reference['confidence']
+     price['review_required']=True
   if price:summary['annual']+=price['annual'];summary['priced_rows']+=1
   manual=a.get('manual_annual_unit') is not None and a.get('manual_annual_unit')!=''
   if manual:
