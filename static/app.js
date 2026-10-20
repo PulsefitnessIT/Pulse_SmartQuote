@@ -254,9 +254,9 @@ function renderStagedUploads(){
  }
  const invoices=stagedUploads.filter(e=>e.kind==='invoice');
  const batch=$('reviewInvoiceBatch');batch.classList.toggle('hidden',!invoices.length);
- if(invoices.length)batch.textContent='Review '+invoices.length+' sales invoice'+(invoices.length===1?'':'s')+' →';
- batch.disabled=invoices.length>10;
- if(invoices.length>10)batch.title='Import invoices in batches of up to 10. Remove some invoices first.';
+ if(invoices.length)batch.textContent=invoices.length>10?'Review first 10 of '+invoices.length+' sales invoices →':'Review '+invoices.length+' sales invoice'+(invoices.length===1?'':'s')+' →';
+ batch.disabled=false;
+ batch.title=invoices.length>10?'Remaining invoices stay in the queue for the next review.':'';
 }
 function reviewStagedUpload(id){
  const entry=stagedUploads.find(x=>x.id===id);
@@ -269,8 +269,8 @@ function reviewStagedUpload(id){
 function reviewStagedInvoices(){
  const invoices=stagedUploads.filter(x=>x.kind==='invoice');
  if(!invoices.length)return;
- if(invoices.length>10){toast('Review up to 10 invoices together. Remove extras from the queue for the next batch.',true);return;}
- previewInvoices(invoices.map(x=>x.file),invoices.map(x=>x.id));
+ const group=invoices.slice(0,10); // Keep extra invoices staged, avoiding needless removals.
+ previewInvoices(group.map(x=>x.file),group.map(x=>x.id));
 }
 
 async function importFile(file,entryId=null){
