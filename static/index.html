@@ -68,6 +68,21 @@
     <label class="checkline"><input id="masterAcknowledged" type="checkbox"> I have checked the catalogue changes and understand they will update open quote prices.</label>
     <button id="managerApply" class="primary-btn" disabled>2. Apply reviewed changes</button>
    <section class="panel manager-panel"><div class="panel-head"><div><div class="eyebrow dark">EQUIPMENT INTELLIGENCE</div><h2>Equipment still needing a match or price</h2><p>Priority worklist across open draft quotations. Sorted by number of physical machines, not alphabetical SKU.</p></div><button id="downloadAllGaps" class="secondary-btn" type="button">↓ Export all missing equipment</button></div><div class="manager-stats" id="matchingGapStats"></div><div id="matchingGapList" class="manager-results"></div></section>
+   <section class="panel manager-panel" aria-labelledby="hybridRrpHeading">
+    <div class="panel-head"><div><div class="eyebrow dark">LEGACY EQUIPMENT / PRICING CONTROL</div><h2 id="hybridRrpHeading">Current-equivalent RRP and legacy exceptions</h2><p>Policy: use the verified current equivalent by default. Legacy exceptions need documented evidence and a second manager's approval. No prices are applied to customer quotations automatically.</p></div></div>
+    <div class="form-grid">
+      <label>Original legacy model / SKU<input id="hybridLegacy" placeholder="e.g. 260G-0"></label>
+      <label>Basis<select id="hybridBasis"><option value="current_equivalent">Current equivalent (default)</option><option value="legacy_exception">Legacy exception (documented)</option></select></label>
+      <label>Exact current product SKU<input id="hybridSku" placeholder="e.g. 260G-AAS"></label>
+      <label>Physically verified console<input id="hybridConsole" placeholder="e.g. Console 5 (Series 2), or Unconfirmed"></label>
+      <label>Exception-only historical RRP (£)<input id="hybridExceptionRrp" type="number" min="0.01" step="0.01" placeholder="Only for approved exception"></label>
+      <label>Exception expiry / recheck date<input id="hybridExpiry" type="date"></label>
+      <label>Source evidence / document reference<input id="hybridEvidence" placeholder="Master year, original SKU, photographed console..."></label>
+      <label>Reason for mapping or exception<input id="hybridReason" placeholder="Explain why the equivalence / exception is correct"></label>
+    </div>
+    <button class="primary-btn" id="hybridPropose" type="button">Submit for independent manager approval</button>
+    <div id="hybridRrpRules" class="manager-results" aria-live="polite"></div>
+   </section>
    <section class="panel manager-panel"><div class="panel-head"><div><div class="eyebrow dark">REUSABLE KNOWLEDGE</div><h2>Reviewed equipment matching memory</h2><p>Save an exact physical machine identity when resolving a quote. Future matching imports will offer this as a suggestion, but will never automatically select it or approve its RRP.</p></div></div><div id="matchingMemoryList" class="manager-results"></div></section>
    </section><section class="panel manager-panel"><h3>Recent catalogue edits</h3><div id="managerHistory"></div></section>
   </div>

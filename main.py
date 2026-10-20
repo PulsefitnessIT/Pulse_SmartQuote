@@ -6,6 +6,8 @@ from io import BytesIO
 import engine as eng
 import catalogue_admin as admin
 import matching_memory as memory
+import hybrid_rrp as hybrid
+import hybrid_rrp as hybrid
 from catalogue_gaps import analyse as analyse_gaps
 from import_quality import preview as import_preflight
 import bulk_review
@@ -350,6 +352,8 @@ def match_review(id:str,aid:str):
     if a is None:raise HTTPException(404,'Equipment row not found')
     report=eng.review_candidates(a,limit=12)
     report['reviewed_match']=memory.recall(a,admin.revision())
+    report['legacy_rrp_policy']=hybrid.suggest(a,admin.revision())
+    report['legacy_rrp_policy']=hybrid.suggest(a,admin.revision())
     # A displayed group is a view, never a new physical source record.
     pmap={line['id']:line['price'] for line in calc_quote(q)['lines']}
     group=next((g for g in grouped_assets(q['assets'],pmap) if aid in g['ids']),None)
@@ -662,6 +666,74 @@ def matching_gaps_csv():
     return Response(content='\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
                     headers={'Content-Disposition':'attachment; filename="Pulse_SmartQuote_Missing_Equipment_Worklist.csv"'})
 
+
+@app.get('/api/catalog/admin/hybrid-rrp')
+def hybrid_rrp_register():
+    return {'policy': hybrid.POLICY, 'rules': hybrid.rules(),
+            'notice': 'Approved pricing basis does not approve any individual RRP, model, console, tariff or customer quotation.'}
+
+@app.post('/api/catalog/admin/hybrid-rrp/propose')
+async def propose_hybrid_rrp(request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    try:
+        return hybrid.propose(payload,actor(request)['username'],admin.revision())
+    except ValueError as e:raise HTTPException(400,str(e))
+
+@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/approve')
+async def approve_hybrid_rrp(rule_id:str,request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    if payload.get('acknowledge') is not True:
+        raise HTTPException(400,'Confirm that the original evidence, machine, console and price have been independently checked.')
+    try:
+        return hybrid.approve(rule_id,actor(request)['username'],admin.revision(),payload.get('note',''))
+    except ValueError as e:raise HTTPException(409,str(e))
+
+@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/revoke')
+async def revoke_hybrid_rrp(rule_id:str,request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    try:
+        return hybrid.revoke(rule_id,actor(request)['username'],payload.get('reason',''))
+    except ValueError as e:raise HTTPException(409,str(e))
+
+@app.get('/api/catalog/admin/hybrid-rrp')
+def hybrid_rrp_register():
+    return {'policy': hybrid.POLICY, 'rules': hybrid.rules(),
+            'notice': 'Approved pricing basis does not approve any individual RRP, model, console, tariff or customer quotation.'}
+
+@app.post('/api/catalog/admin/hybrid-rrp/propose')
+async def propose_hybrid_rrp(request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    try:
+        return hybrid.propose(payload,actor(request)['username'],admin.revision())
+    except ValueError as e:raise HTTPException(400,str(e))
+
+@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/approve')
+async def approve_hybrid_rrp(rule_id:str,request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    if payload.get('acknowledge') is not True:
+        raise HTTPException(400,'Confirm that the original evidence, machine, console and price have been independently checked.')
+    try:
+        return hybrid.approve(rule_id,actor(request)['username'],admin.revision(),payload.get('note',''))
+    except ValueError as e:raise HTTPException(409,str(e))
+
+@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/revoke')
+async def revoke_hybrid_rrp(rule_id:str,request:Request):
+    if actor(request)['role'] not in ('manager','admin'):
+        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
+    payload=await request.json()
+    try:
+        return hybrid.revoke(rule_id,actor(request)['username'],payload.get('reason',''))
+    except ValueError as e:raise HTTPException(409,str(e))
 
 @app.get('/api/catalog/admin/readiness')
 def catalog_readiness():

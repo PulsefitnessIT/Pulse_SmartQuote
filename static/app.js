@@ -193,12 +193,19 @@ async function loadSmartReview(asset){
  try{
   const data=await api(`/api/quotes/${state.quote.id}/match-review/${encodeURIComponent(asset.id)}`);
   if(state.reviewingId!==asset.id || !$('smartReviewSuggestions'))return;
+  const hybrid=data.legacy_rrp_policy;
+  const hybridText=hybrid?.status==='reviewed' ? (hybrid.basis==='current_equivalent' && hybrid.current_equivalent?
+    `Manager-reviewed current equivalent: ${esc(hybrid.current_equivalent.sku)} · RRP ${money(hybrid.current_equivalent.rrp)} · Console ${esc(hybrid.current_equivalent.console||'Not confirmed')}. Confirm this physical configuration before selecting a SKU.`:
+    `Manager-reviewed legacy exception: ${esc(hybrid.legacy_code)} · Evidence-only historical RRP ${money(hybrid.exception_rrp_evidence_only)}. This cannot automatically change pricing.`):
+    hybrid?.status==='stale'||hybrid?.status==='expired'?`Previous legacy mapping is ${esc(hybrid.status)}: ${esc(hybrid.warning||'recheck required')}`:
+    'Hybrid RRP policy: use a verified current equivalent. If not identifiable, refer to a pricing manager for a documented legacy exception. Never guess the installed console.';
+  const hybridHtml=`<div class="editor-help"><b>Legacy equipment pricing basis:</b> ${hybridText}</div>`;
   const previously=data.reviewed_match;
   const memoryHtml=previously?`<div class="memory-recommendation"><b>Previously verified matching identity: ${esc(previously.sku)}</b><small>${esc(previously.reason)}. ${previously.available?'Still in catalogue':'No longer usable'}. ${previously.stale?'Catalogue updated since review — check all pricing/console evidence.':''}</small>${previously.available?'<button class="secondary-btn" id="selectMemory" type="button">Review saved SKU</button>':''}</div>`:'';
   const notice=data.source_variant?`<p class="smart-alert">Legacy model variant: ${esc(data.source_variant)}. Check the physical machine before choosing a base-family SKU.</p>`:'';
   const evidence=data.historical?`<small>Historical records: ${esc(data.historical.variant_count)} variant(s) · ${esc(data.historical.basis)}. Historical codes are not approved alternatives.</small>`:'<small>No exact historical identity recorded for this model/SKU in the currently loaded archive.</small>';
   const top=data.candidates||[];
-  panel.innerHTML=`<div class="smart-review-title"><b>Catalogue match assistant</b><span>${esc(data.group.quantity)} units · ${esc(data.group.count)} source rows</span></div><p class="editor-hint">${esc(data.explanation)}</p>${notice}${evidence}${memoryHtml}<div class="smart-review-results">${top.slice(0,8).map((c,i)=>`<div class="match-choice"><div><b>${esc(c.sku)} · ${esc(c.name)}</b><p>${esc(c.model)} · ${esc(c.console_display||c.console||'Console unverified')} · RRP ${c.rrp?money(c.rrp):'Not available'}</p><small>${esc(c.reason)}${c.review_flags?.length?' · '+esc(c.review_flags.join('; ')):''}</small></div><button data-smartchoose="${i}" ${c.duplicate_sku?'disabled':''}>Review & select</button></div>`).join('')||'<p class="editor-hint">No reliable current catalogue candidates found. Record the equipment for commercial review; never invent its RRP.</p>'}</div>`;
+  panel.innerHTML=`<div class="smart-review-title"><b>Catalogue match assistant</b><span>${esc(data.group.quantity)} units · ${esc(data.group.count)} source rows</span></div><p class="editor-hint">${esc(data.explanation)}</p>${notice}${evidence}${memoryHtml}${hybridHtml}<div class="smart-review-results">${top.slice(0,8).map((c,i)=>`<div class="match-choice"><div><b>${esc(c.sku)} · ${esc(c.name)}</b><p>${esc(c.model)} · ${esc(c.console_display||c.console||'Console unverified')} · RRP ${c.rrp?money(c.rrp):'Not available'}</p><small>${esc(c.reason)}${c.review_flags?.length?' · '+esc(c.review_flags.join('; ')):''}</small></div><button data-smartchoose="${i}" ${c.duplicate_sku?'disabled':''}>Review & select</button></div>`).join('')||'<p class="editor-hint">No reliable current catalogue candidates found. Record the equipment for commercial review; never invent its RRP.</p>'}</div>`;
   if(previously?.available){const b=panel.querySelector('#selectMemory');if(b)b.onclick=()=>{
    if(!confirm(`Verify ${previously.sku} against this physical machine and actual console before applying it. Continue?`))return;
    choose(asset,previously.catalogue_option);
@@ -473,6 +480,7 @@ function bind(){
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
  $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
+ $('hybridPropose').onclick=proposeHybridRrp;
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;
  const z=$('dropzone');z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag')});z.addEventListener('dragleave',()=>z.classList.remove('drag'));z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag');importFile(e.dataTransfer.files[0])});
@@ -483,7 +491,7 @@ function bind(){
 let currentStage=null;
 async function loadManager(){
  try{
-  const [info,audit,readiness,gaps,memoryRules]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit'),api('/api/catalog/admin/readiness'),api('/api/catalog/admin/matching-gaps'),api('/api/catalog/admin/matching-memory')]);
+  const [info,audit,readiness,gaps,memoryRules,legacyRules]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit'),api('/api/catalog/admin/readiness'),api('/api/catalog/admin/matching-gaps'),api('/api/catalog/admin/matching-memory'),api('/api/catalog/admin/hybrid-rrp')]);
   const archive=readiness.historical;
   $('readinessPanel').innerHTML=`<div class="readiness-heading"><div><b>V10 archive & commercial readiness</b><p>${archive.unique_skus.toLocaleString()} historical SKUs · ${archive.alias_codes.toLocaleString()} old codes · ${archive.source_years.join(', ')||'No sources loaded'}</p></div><span class="readiness-status ${readiness.automated_preflight_passes?'ready':'hold'}">${readiness.automated_preflight_passes?'Automated checks passed':'Pilot — review required'}</span></div><ul>${readiness.warnings.map(w=>`<li>${esc(w)}</li>`).join('')||'<li>Automated data checks passed. Manual quote/PDF sign-off is still required.</li>'}</ul><small>${esc(readiness.notice)}</small>`;
   $('managerStats').innerHTML=`<div><b>${info.rows.toLocaleString()}</b><small>Catalogue records</small></div><div><b>${info.unique_skus.toLocaleString()}</b><small>Unique item codes</small></div><div><b>${info.estimate_rows}</b><small>Calculated estimates</small></div><div><b>${info.duplicate_sku_count}</b><small>Conflicting item codes</small></div>`;
@@ -493,10 +501,34 @@ async function loadManager(){
   $('matchingGapList').querySelectorAll('[data-gotoquote]').forEach(btn=>btn.onclick=async()=>{try{const d=await api('/api/quotes/'+encodeURIComponent(btn.dataset.gotoquote));apply(d);localStorage.setItem('pulse_quote_id',d.quote.id);state.filter='issues';render();showView('builder');review(btn.dataset.gotoasset)}catch(e){toast(e.message,true)}});
   $('matchingMemoryList').innerHTML=memoryRules.rules.length?memoryRules.rules.map(r=>`<div class="manager-entry"><div><b>${esc(r.source.code||r.source.model)} → ${esc(r.sku)}</b><small>${esc(r.source.name||'')} · Console ${esc(r.source.console||'Not recorded')} · ${esc(r.reviewer)} · ${esc(r.updated.slice(0,10))}</small><small>${esc(r.evidence)}${!r.catalogue_sku_available?' · SOURCE SKU CONFLICT': ''} · ${esc(r.status)}</small></div>${r.status==='active'?`<button class="secondary-btn" data-revoke="${esc(r.id)}" type="button">Revoke</button>`:''}</div>`).join(''):'<p class="editor-hint">No manager-verified equipment identities saved yet. Use the optional confirmation during a quotation review.</p>';
   $('matchingMemoryList').querySelectorAll('[data-revoke]').forEach(btn=>btn.onclick=async()=>{const reason=prompt('Why is this exact equipment mapping no longer reliable? (12+ characters)');if(reason===null)return;try{await api('/api/catalog/admin/matching-memory/'+encodeURIComponent(btn.dataset.revoke)+'/revoke',{method:'POST',body:JSON.stringify({reason})});toast('Reviewed identity retired; audit history preserved.');loadManager()}catch(e){toast(e.message,true)}});
+  showHybridRrpRules(legacyRules);
   $('managerHistory').innerHTML=audit.history.length?audit.history.map(x=>`<div class="audit-row"><b>${esc(x.sku)}</b> · ${esc(x.modified)} · ${esc(x.operator)}<br><small>${esc(x.reason)}</small></div>`).join(''):'<p class="editor-hint">No catalogue edits recorded yet.</p>';
   if($('managerSearch').value.trim().length>1)await searchManager();
  }catch(e){toast(e.message,true)}
 }
+function showHybridRrpRules(data){
+ const target=$('hybridRrpRules');if(!target)return;
+ target.innerHTML=`<p class="editor-hint"><b>Approved basis:</b> current equivalent unless an individually reviewed legacy exception is recorded. These records provide review evidence; they do not reprice the quotation.</p>`+
+ (data.rules.length?data.rules.map(r=>`<div class="manager-entry"><div><b>${esc(r.legacy_code)} → ${esc(r.basis==='current_equivalent'?r.current_sku:'Legacy exception')}</b><small>${esc(r.status.toUpperCase())} · Console ${esc(r.console||'Not recorded')} · ${esc(r.proposed_by)} · ${esc(r.basis==='legacy_exception'?money(r.exception_rrp):'Exact catalogue RRP')}</small><small>${esc(r.evidence)}${r.approved_by?' · Approved by '+esc(r.approved_by):''}</small></div><div>${r.status==='pending'?`<button class="secondary-btn" type="button" data-hybridapprove="${esc(r.id)}">Verify & approve</button>`:''}${r.status!=='revoked'?`<button class="secondary-btn" type="button" data-hybridrevoke="${esc(r.id)}">Revoke</button>`:''}</div></div>`).join(''):'<p class="editor-hint">No legacy-equivalence decisions entered yet.</p>');
+ target.querySelectorAll('[data-hybridapprove]').forEach(b=>b.onclick=async()=>{
+  const note=prompt('Independent evidence checked (at least 20 characters). The proposer cannot self-approve.');if(note===null)return;
+  if(!confirm('Confirm you independently verified the original machine, console, documentation and pricing basis? This will NOT automatically change quotes.'))return;
+  try{await api('/api/catalog/admin/hybrid-rrp/'+encodeURIComponent(b.dataset.hybridapprove)+'/approve',{method:'POST',body:JSON.stringify({note,acknowledge:true})});toast('Review record approved; staff must still confirm individual quote pricing.');loadManager()}catch(e){toast(e.message,true)}
+ });
+ target.querySelectorAll('[data-hybridrevoke]').forEach(b=>b.onclick=async()=>{
+  const reason=prompt('Document why this mapping / exception is no longer valid (20+ characters).');if(reason===null)return;
+  try{await api('/api/catalog/admin/hybrid-rrp/'+encodeURIComponent(b.dataset.hybridrevoke)+'/revoke',{method:'POST',body:JSON.stringify({reason})});toast('Legacy pricing reference revoked.');loadManager()}catch(e){toast(e.message,true)}
+ });
+}
+async function proposeHybridRrp(){
+ const basis=$('hybridBasis').value;
+ const payload={legacy_code:$('hybridLegacy').value,basis,current_sku:basis==='current_equivalent'?$('hybridSku').value:'',
+  console:$('hybridConsole').value,exception_rrp:basis==='legacy_exception'?$('hybridExceptionRrp').value:null,
+  expires_on:basis==='legacy_exception'?$('hybridExpiry').value:null,
+  evidence:$('hybridEvidence').value,reason:$('hybridReason').value};
+ try{const response=await api('/api/catalog/admin/hybrid-rrp/propose',{method:'POST',body:JSON.stringify(payload)});toast('Proposed '+response.legacy_code+'; independent manager approval required.');loadManager()}catch(e){toast(e.message,true)}
+}
+
 async function downloadAllGaps(){
  try{
   const response=await fetch('/api/catalog/admin/matching-gaps.csv',{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});
