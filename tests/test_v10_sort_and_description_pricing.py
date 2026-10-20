@@ -57,8 +57,12 @@ class DescriptionPricingTests(unittest.TestCase):
     self.assertEqual(line['rrp'],rrp)
     self.assertEqual(line['annual'],annual)
     self.assertEqual(line['reference_sku'],reference)
-    self.assertEqual(line['basis'],'staff-guided-estimate')
-    self.assertTrue(line['review_required'])
+    if code in ('305H-AEP','310H-AEP'):
+     self.assertEqual(line['basis'],'source-rrp-calculated')
+     self.assertFalse(line['review_required'])
+    else:
+     self.assertEqual(line['basis'],'staff-guided-estimate')
+     self.assertTrue(line['review_required'])
     self.assertFalse(eng.calc_quote(q)['ready'])
     self.assertEqual(asset['code'],code)
     self.assertIsNone(asset.get('selected'))
