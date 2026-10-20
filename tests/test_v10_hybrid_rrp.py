@@ -55,13 +55,13 @@ class HybridPolicyTests(unittest.TestCase):
             approved=self.client.post('/api/catalog/admin/hybrid-rrp/'+rule+'/approve',
                          json={'note':'Verified against master RRP and installed physical console.', 'acknowledge':True})
             self.assertEqual(approved.status_code,200,approved.text)
-        suggestion=H.suggest(before,0)
+        suggestion=H.suggest(before,main.admin.revision())
         self.assertEqual(suggestion['current_equivalent']['sku'],'260G-AAS')
         self.assertTrue(suggestion['requires_operator_confirmation'])
         self.assertFalse(suggestion['automatic_price_application'])
         self.assertIsNone(before['selected'])
         self.assertEqual(self.client.get('/api/quotes/'+q['id']).json()['summary']['annual'],0)
-        self.assertEqual(H.suggest(before,1)['status'],'stale')
+        self.assertEqual(H.suggest(before,main.admin.revision()+1)['status'],'stale')
         duplicate=self.client.post('/api/catalog/admin/hybrid-rrp/propose',json=self.proposal())
         self.assertEqual(duplicate.status_code,400)
 
@@ -88,7 +88,7 @@ class HybridPolicyTests(unittest.TestCase):
             ok=self.client.post('/api/catalog/admin/hybrid-rrp/'+rule+'/approve',
               json={'acknowledge':True,'note':'Physically and commercially verified exception source document.'})
             self.assertEqual(ok.status_code,200,ok.text)
-        evidence=H.suggest({'code':'260G-0'},0)
+        evidence=H.suggest({'code':'260G-0'},main.admin.revision())
         self.assertEqual(evidence['basis'],'legacy_exception')
         self.assertEqual(evidence['exception_rrp_evidence_only'],4850)
         self.assertFalse(evidence['automatic_price_application'])
