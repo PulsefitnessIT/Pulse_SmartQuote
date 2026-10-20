@@ -7,7 +7,7 @@ import engine as eng
 import catalogue_admin as admin
 import matching_memory as memory
 import hybrid_rrp as hybrid
-import hybrid_rrp as hybrid
+import rrp_reconciliation as rrp2026
 from catalogue_gaps import analyse as analyse_gaps
 from import_quality import preview as import_preflight
 import bulk_review
@@ -701,39 +701,38 @@ async def revoke_hybrid_rrp(rule_id:str,request:Request):
         return hybrid.revoke(rule_id,actor(request)['username'],payload.get('reason',''))
     except ValueError as e:raise HTTPException(409,str(e))
 
-@app.get('/api/catalog/admin/hybrid-rrp')
-def hybrid_rrp_register():
-    return {'policy': hybrid.POLICY, 'rules': hybrid.rules(),
-            'notice': 'Approved pricing basis does not approve any individual RRP, model, console, tariff or customer quotation.'}
+# Source-derived RRP evidence. Not an instruction to change live catalogue prices.
+def _rrp_2026_rows():
+    return rrp2026.reconcile(eng.CAT, eng.DUPLICATE_CODES)
 
-@app.post('/api/catalog/admin/hybrid-rrp/propose')
-async def propose_hybrid_rrp(request:Request):
-    if actor(request)['role'] not in ('manager','admin'):
-        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
-    payload=await request.json()
-    try:
-        return hybrid.propose(payload,actor(request)['username'],admin.revision())
+@app.get('/api/catalog/admin/rrp-2026/summary')
+def rrp_2026_summary():
+    return rrp2026.summary(_rrp_2026_rows())
+
+@app.get('/api/catalog/admin/rrp-2026/search')
+def rrp_2026_search(q:str='',status:str='',offset:int=0,limit:int=30):
+    try:return rrp2026.search(_rrp_2026_rows(),q,status,offset,limit)
     except ValueError as e:raise HTTPException(400,str(e))
 
-@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/approve')
-async def approve_hybrid_rrp(rule_id:str,request:Request):
-    if actor(request)['role'] not in ('manager','admin'):
-        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
-    payload=await request.json()
-    if payload.get('acknowledge') is not True:
-        raise HTTPException(400,'Confirm that the original evidence, machine, console and price have been independently checked.')
-    try:
-        return hybrid.approve(rule_id,actor(request)['username'],admin.revision(),payload.get('note',''))
-    except ValueError as e:raise HTTPException(409,str(e))
+@app.get('/api/catalog/admin/rrp-2026/family/{model}')
+def rrp_2026_family(model:str):
+    try:return rrp2026.family(_rrp_2026_rows(),model)
+    except ValueError as e:raise HTTPException(400,str(e))
 
-@app.post('/api/catalog/admin/hybrid-rrp/{rule_id}/revoke')
-async def revoke_hybrid_rrp(rule_id:str,request:Request):
-    if actor(request)['role'] not in ('manager','admin'):
-        raise HTTPException(403,'Manager permissions required for legacy RRP reviews.')
-    payload=await request.json()
-    try:
-        return hybrid.revoke(rule_id,actor(request)['username'],payload.get('reason',''))
-    except ValueError as e:raise HTTPException(409,str(e))
+@app.get('/api/catalog/admin/rrp-2026/reconciliation.csv')
+def rrp_2026_reconciliation_csv():
+    return Response(rrp2026.export_csv(_rrp_2026_rows()),media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition':'attachment; filename="SmartQuote_2026_RRP_Reconciliation_Review.csv"'})
+
+@app.get('/api/catalog/rrp-evidence')
+def rrp_2026_equipment_search(q:str='',limit:int=12):
+    if len(q.strip())<2:return {'total':0,'items':[],'notice':'Enter a product code or model to see unapproved source evidence.'}
+    result=rrp2026.search(_rrp_2026_rows(),q,'',0,min(20,max(1,limit)))
+    return {'total':result['total'], 'items':[
+        {'sku':x['sku'],'model':x['model'],'name':x['name'],'console':x['console'],
+         'source_rrp':x['source_rrp'],'status':x['status'],'source_prices':x['source_prices']}
+        for x in result['items']],
+        'notice':'2026 source RRP reference only. Not an approved quotation price or a verified replacement console.'}
 
 @app.get('/api/catalog/admin/readiness')
 def catalog_readiness():

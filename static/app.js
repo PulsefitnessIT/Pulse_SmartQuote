@@ -398,11 +398,12 @@ async function updateCustomerHints(){try{
 async function searchCatalogue(){
  const query=$('catalogSearch').value.trim();
  if(query.length<2){$('catalogResults').innerHTML='<p class="modal-lead">Enter at least two letters or digits.</p>';return}
- const d=await api('/api/catalog/search?q='+encodeURIComponent(query)+'&limit=30');
+ const [d,rrpEvidence]=await Promise.all([api('/api/catalog/search?q='+encodeURIComponent(query)+'&limit=30'),api('/api/catalog/rrp-evidence?q='+encodeURIComponent(query)+'&limit=12')]);
  const pkg=(s,t)=>s.monthly_packages?.[t]!=null?money(s.monthly_packages[t]):'RRP / SKU needs review';
  $('catalogResults').innerHTML=`<div class="catalogue-basis">${esc(d.basis)}. Actual quote discount is applied in the quotation builder, not here.</div>`+
  (d.results.map(s=>`<div class="catalogue-result"><div class="catalogue-result-head"><b>${esc(s.sku)} · ${esc(s.name)}</b><span><strong>RRP</strong> ${s.rrp?money(s.rrp):'Unverified'}</span></div><small>Model ${esc(s.model||'not supplied')} · Console: ${esc(s.console_display||s.console)} ${s.console_status==='description_only'?'(description-derived; mapping not verified)':''}</small><div class="catalogue-tiers"><span>Silver <b>${pkg(s,'Silver')}</b></span><span>Gold <b>${pkg(s,'Gold')}</b></span><span>Platinum <b>${pkg(s,'Platinum')}</b></span></div><div class="catalogue-note">${esc(s.duplicate_sku?'Conflicting source SKU – automatic quote blocked':s.pricing_warning)}${s.pricing_rule?' · '+esc(s.rate_group)+' · '+esc(s.pricing_rule):''}</div></div>`).join('')||'<p>No current priced catalogue results. Check historical evidence below.</p>')+
- (d.historical?.results?.length?`<div class="history-heading"><b>Historical equipment library (${d.historical.total} matches)</b><small>Identity evidence only — a historical item is not an approved replacement or current RRP.</small></div>${d.historical.results.map(h=>`<div class="history-result"><b>${esc(h.sku)} · ${esc(h.name||'Unnamed historical item')}</b><small>Model ${esc(h.model||'unknown')} · Console ${esc(h.console||'unverified')} · Seen ${esc(h.first_seen||'?')}–${esc(h.year||'?')} · ${esc(h.source||'Original master')} · ${esc(h.source_revisions?.length||1)} recorded revision(s)${h.source_row?' · source row '+esc(h.source_row):''}</small></div>`).join('')}`:'');
+ (d.historical?.results?.length?`<div class="history-heading"><b>Historical equipment library (${d.historical.total} matches)</b><small>Identity evidence only — a historical item is not an approved replacement or current RRP.</small></div>${d.historical.results.map(h=>`<div class="history-result"><b>${esc(h.sku)} · ${esc(h.name||'Unnamed historical item')}</b><small>Model ${esc(h.model||'unknown')} · Console ${esc(h.console||'unverified')} · Seen ${esc(h.first_seen||'?')}–${esc(h.year||'?')} · ${esc(h.source||'Original master')} · ${esc(h.source_revisions?.length||1)} recorded revision(s)${h.source_row?' · source row '+esc(h.source_row):''}</small></div>`).join('')}`:'')+
+ (rrpEvidence.items?.length?`<div class="history-heading"><b>August 2026 RRP source (${rrpEvidence.total} potential variants)</b><small>Unapproved RRP evidence — not a quote price. Confirm exact SKU, console and commercial authorisation.</small></div>${rrpEvidence.items.map(x=>`<div class="history-result"><b>${esc(x.sku)} · ${esc(x.name)}</b><small>Console: ${esc(x.console||'Not confirmed')} · Source RRP: ${x.source_rrp!=null?money(x.source_rrp):'Conflicting or unavailable'} · ${esc(rrp2026Labels[x.status]||x.status)} · <b>Source pending approval</b></small></div>`).join('')}`:'');
 }
 function manualAdd(){
  $('modalTitle').textContent='Add a machine — no SKU needed';
@@ -480,6 +481,11 @@ function bind(){
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
  $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
+ $('rrp2026Query').oninput=()=>{rrp2026Offset=0;clearTimeout(rrp2026Timer);rrp2026Timer=setTimeout(searchRrp2026,250)};
+ $('rrp2026Filter').onchange=()=>{rrp2026Offset=0;searchRrp2026()};
+ $('rrp2026Previous').onclick=()=>{rrp2026Offset=Math.max(0,rrp2026Offset-25);searchRrp2026()};
+ $('rrp2026Next').onclick=()=>{rrp2026Offset+=25;searchRrp2026()};
+ $('downloadRrp2026').onclick=downloadRrp2026;
  $('hybridPropose').onclick=proposeHybridRrp;
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;
@@ -489,6 +495,48 @@ function bind(){
 // V4 master catalogue controls: operator-entered audit trail. This does not
 // implement identity/authentication or grant autonomous commercial approval.
 let currentStage=null;
+// Manager-only RRP evidence; choosing a source line never commits its price.
+let rrp2026Offset=0,rrp2026RequestId=0,rrp2026Timer;
+const rrp2026Labels={source_price_conflict:'Source RRP conflict',source_variant_conflict:'Different configurations',source_rrp_missing:'Missing source price',live_sku_conflict:'Live SKU conflict',not_in_live_catalogue:'Not in current catalogue',live_rrp_missing:'Current RRP missing',rrp_difference:'Different RRP',aligned:'Same RRP'};
+async function loadRrp2026(){
+ try{
+  const info=await api('/api/catalog/admin/rrp-2026/summary');
+  const c=info.status_counts;
+  $('rrp2026Stats').innerHTML=`<div><b>${esc(info.distinct_source_skus.toLocaleString())}</b><small>2026 product codes</small></div><div><b>${esc((c.rrp_difference||0).toLocaleString())}</b><small>RRPs differ</small></div><div><b>${esc((c.not_in_live_catalogue||0).toLocaleString())}</b><small>Missing live SKUs</small></div><div><b>${esc((c.source_price_conflict||0).toLocaleString())}</b><small>Conflicting source RRPs</small></div>`;
+  $('rrp2026Notice').textContent=`Source ${info.source_file} · ${info.source_date} · ${info.source_rows} original rows. All RRPs are awaiting commercial approval; source differences will never reprice a quote automatically.`;
+  await searchRrp2026();
+ }catch(e){$('rrp2026Results').textContent='Unable to load the 2026 RRP source: '+e.message}
+}
+async function searchRrp2026(){
+ const id=++rrp2026RequestId,term=$('rrp2026Query').value.trim(),filter=$('rrp2026Filter').value;
+ try{
+  const result=await api('/api/catalog/admin/rrp-2026/search?q='+encodeURIComponent(term)+'&status='+encodeURIComponent(filter)+'&offset='+rrp2026Offset+'&limit=25');
+  if(id!==rrp2026RequestId)return;
+  $('rrp2026Page').textContent=result.total ? `${rrp2026Offset+1}–${Math.min(result.total,rrp2026Offset+result.items.length)} of ${result.total.toLocaleString()}` : 'No matches';
+  $('rrp2026Previous').disabled=rrp2026Offset===0;
+  $('rrp2026Next').disabled=rrp2026Offset+result.items.length>=result.total;
+  $('rrp2026Results').innerHTML=result.items.length ? result.items.map(x=>{
+   const price=x.source_rrp!=null?money(x.source_rrp):x.source_prices?.length?'Conflicting values':'Missing';
+   const compare=x.live_rrp!=null?money(x.live_rrp):'Not found';
+   const delta=x.difference_gbp!=null?` · Difference ${money(x.difference_gbp)}`:'';
+   return `<div class="manager-entry"><div><b>${esc(x.sku)} · ${esc(x.name)}</b><small>2026 source RRP: <strong>${esc(price)}</strong> · Existing SmartQuote: ${esc(compare)}${esc(delta)}</small><small>Model ${esc(x.model)} · Console: ${esc(x.console||'Not confirmed')} · ${esc(rrp2026Labels[x.status]||x.status)}</small><details><summary>Original master evidence (${x.sources.length} row${x.sources.length===1?'':'s'})</summary>${x.sources.map(row=>`<small>${esc(row.sheet)} / row ${esc(row.row)} / column ${esc(row.column)} · ${money(row.rrp)} · ${esc(row.console||'Console unconfirmed')} · ${esc(row.name)}</small>`).join('')}</details></div><div class="rrp-evidence-actions"><button class="secondary-btn" data-rrpfamily="${esc(x.model)}" type="button">Compare family</button>${x.current_catalogue_present?`<button class="secondary-btn" data-rrpedit="${esc(x.sku)}" type="button">Open catalogue</button>`:''}</div></div>`
+  }).join(''):'<p class="editor-hint">Nothing in this review category matches your search.</p>';
+  $('rrp2026Results').querySelectorAll('[data-rrpfamily]').forEach(b=>b.onclick=()=>showRrp2026Family(b.dataset.rrpfamily));
+  $('rrp2026Results').querySelectorAll('[data-rrpedit]').forEach(b=>b.onclick=()=>editCatalogue(b.dataset.rrpedit));
+ }catch(e){if(id===rrp2026RequestId)$('rrp2026Results').textContent='Unable to search source RRPs: '+e.message}
+}
+async function showRrp2026Family(model){
+ try{
+  const d=await api('/api/catalog/admin/rrp-2026/family/'+encodeURIComponent(model));
+  $('rrp2026Family').innerHTML=`<div class="editor-help"><b>${esc(d.model)} — ${d.total} source variants</b> · Unapproved RRP range: ${d.min_unapproved_rrp!=null?money(d.min_unapproved_rrp):'Not available'}–${d.max_unapproved_rrp!=null?money(d.max_unapproved_rrp):'Not available'}. Confirm the exact installed console and SKU before pricing. <button class="link-btn" id="rrpCloseFamily">Close family comparison</button></div>`+
+   d.items.map(x=>`<div class="manager-entry"><div><b>${esc(x.sku)} · ${esc(x.name)}</b><small>${esc(x.console||'Console unconfirmed')} · ${x.source_rrp!=null?money(x.source_rrp):'Conflicting / missing source RRP'} · ${esc(rrp2026Labels[x.status]||x.status)}</small></div></div>`).join('');
+  $('rrpCloseFamily').onclick=()=>$('rrp2026Family').innerHTML='';
+  $('rrp2026Family').scrollIntoView({behavior:'smooth',block:'nearest'});
+ }catch(e){toast(e.message,true)}
+}
+async function downloadRrp2026(){
+ try{const response=await fetch('/api/catalog/admin/rrp-2026/reconciliation.csv',{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});if(!response.ok)throw Error('Export unavailable');const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download='SmartQuote_2026_RRP_Reconciliation_Review.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),16000)}catch(e){toast(e.message,true)}
+}
 async function loadManager(){
  try{
   const [info,audit,readiness,gaps,memoryRules,legacyRules]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit'),api('/api/catalog/admin/readiness'),api('/api/catalog/admin/matching-gaps'),api('/api/catalog/admin/matching-memory'),api('/api/catalog/admin/hybrid-rrp')]);
@@ -504,6 +552,7 @@ async function loadManager(){
   showHybridRrpRules(legacyRules);
   $('managerHistory').innerHTML=audit.history.length?audit.history.map(x=>`<div class="audit-row"><b>${esc(x.sku)}</b> · ${esc(x.modified)} · ${esc(x.operator)}<br><small>${esc(x.reason)}</small></div>`).join(''):'<p class="editor-hint">No catalogue edits recorded yet.</p>';
   if($('managerSearch').value.trim().length>1)await searchManager();
+  await loadRrp2026();
  }catch(e){toast(e.message,true)}
 }
 function showHybridRrpRules(data){
