@@ -96,7 +96,7 @@ def _modern_invoice(doc, raw, filename):
     head = doc[0].get_text('text')
     meta = re.search(r'\bInvoice\s+(\d{6,12})\s+Customer Ref:\s*(\S+)\s+Account Ref\s+(\S+)', head)
     date = re.search(r'\b\d{2}/\d{2}/\d{4}\b', head)
-    order = re.search(r'\bSales Order Ref\s+(\d+)', head)
+    order = re.search(r'\bSales Order Ref(?:\s+Invoice Date)?\s+(\d{6,12})', head)
     if not meta or not date:
         raise ValueError('Could not read the invoice reference/date. No equipment has been added.')
     first_blocks = doc[0].get_text('blocks')
