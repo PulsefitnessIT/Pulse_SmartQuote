@@ -257,6 +257,8 @@ def undo_last_asset_import(id:str,request:Request):
  return {**result,'undone_rows':len(chosen),'filename':latest['filename']}
 
 def _invoice_payload(payload):
+    if not isinstance(payload,dict):
+        raise HTTPException(400,'Each invoice must include a PDF filename and content.')
     filename=str(payload.get('filename','')).strip()[:260]
     if not filename.lower().endswith('.pdf'):
         raise HTTPException(400,'Choose a Pulse Fitness invoice PDF.')
@@ -290,6 +292,28 @@ def _invoice_same_quote(q,parsed):
         raise HTTPException(409,'This invoice is for a different site. Start a new quotation to keep asset locations separate.')
 
 
+def _invoice_single_conflicts(q, parsed):
+    """Do not let the old single-invoice API bypass batch safeguards."""
+    number=str(parsed['invoice'].get('invoice_no','')).lstrip('0') or '0'
+    fingerprint=parsed['content_sha256']
+    for f in q.get('files',[]):
+        if f.get('type')=='historical-sales-invoice':
+            previous=str(f.get('invoice_no','')).lstrip('0') or '0'
+            if previous==number and f.get('content_sha256')!=fingerprint:
+                raise HTTPException(409,'Another PDF has this invoice number but different contents. Review the corrected invoice.')
+    existing={_serial_key(s) for asset in q.get('assets',[]) for s in _asset_serial_list(asset)
+              if _serial_key(s) not in PLACEHOLDER_SERIALS}
+    incoming=set()
+    for asset in parsed['assets']:
+        for serial in _asset_serial_list(asset):
+            key=_serial_key(serial)
+            if not key or key in PLACEHOLDER_SERIALS:continue
+            if key in existing:
+                raise HTTPException(409,f'Serial {serial} is already on the quotation. Use Add invoices (PDF) for duplicate-safe importing.')
+            if key in incoming:
+                raise HTTPException(409,f'Serial {serial} appears more than once in the invoice. Check the original PDF.')
+            incoming.add(key)
+
 @app.post('/api/quotes/{id}/invoice-preview')
 async def invoice_preview(id:str,request:Request):
     """Extract only, never modify a quote. Sale prices are evidence, not RRPs."""
@@ -297,6 +321,8 @@ async def invoice_preview(id:str,request:Request):
     parsed=_invoice_payload(await request.json())
     _invoice_same_quote(q,parsed)
     already=any(f.get('content_sha256')==parsed['content_sha256'] for f in q['files'])
+    if not already:
+        _invoice_single_conflicts(q,parsed)
     r=parsed['report']
     return {'invoice':parsed['invoice'],'report':r,
         'candidates':[{'code':a['code'],'name':a['name'],'qty':a['qty'],
@@ -323,6 +349,7 @@ async def invoice_import(id:str,request:Request):
         raise HTTPException(409,'Invoice changed since preview. Preview it again; nothing was imported.')
     if any(f.get('content_sha256')==parsed['content_sha256'] for f in q['files']):
         raise HTTPException(409,'This exact invoice was already imported into this quotation. No duplicates added.')
+    _invoice_single_conflicts(q,parsed)
     if len(q['assets'])+len(parsed['assets'])>2000:
         raise HTTPException(400,'Invoice would exceed 2,000 source rows; use another quotation.')
     with _lock:
@@ -396,13 +423,15 @@ def _invoice_import_plan(q, files):
     """
     if not isinstance(files,list) or not 1 <= len(files) <= 10:
         raise HTTPException(400,'Select between 1 and 10 PDF invoices for the same site.')
-    total=sum(len(x.get('content_base64','')) for x in files if isinstance(x,dict))
+    if any(not isinstance(x,dict) or not isinstance(x.get('content_base64'),str) for x in files):
+        raise HTTPException(400,'Each invoice must include valid PDF content.')
+    total=sum(len(x['content_base64']) for x in files)
     if total>95*1024*1024:
         raise HTTPException(413,'Invoice batch exceeds 70 MB of PDFs; import smaller groups.')
     reference_site=_invoice_site_key(q.get('site',''))
     seen_hash={str(x.get('content_sha256','')) for x in q.get('files',[]) if x.get('content_sha256')}
-    seen_numbers={str(x.get('invoice_no','')).lstrip('0') or '0' for x in q.get('files',[])
-                  if x.get('type')=='historical-sales-invoice' and x.get('invoice_no')}
+    seen_numbers={str(x.get('invoice_no','')).lstrip('0') or '0':str(x.get('content_sha256',''))
+                  for x in q.get('files',[]) if x.get('type')=='historical-sales-invoice' and x.get('invoice_no')}
     existing={}
     for a in q['assets']:
         if a.get('excluded'):continue
@@ -422,7 +451,12 @@ def _invoice_import_plan(q, files):
             raise HTTPException(409,'Invoices are for different delivery sites. Use one site per quotation, or review multi-site cover separately.')
         if site and not reference_site:reference_site=site
         num=str(inv.get('invoice_no','')).lstrip('0') or '0'
-        same=parsed['content_sha256'] in seen_hash or num in seen_numbers
+        if not inv.get('invoice_no'):
+            raise HTTPException(400,'Invoice number was not identified; nothing imported.')
+        known=seen_numbers.get(num)
+        if known is not None and known!=parsed['content_sha256']:
+            raise HTTPException(409,f'Invoice {inv["invoice_no"]} has two different PDF versions. Review the correction before importing.')
+        same=parsed['content_sha256'] in seen_hash or known is not None
         if same:
             report.append({'invoice_no':inv.get('invoice_no'),'filename':payload['filename'],
                            'site':inv.get('site',''),'billed_to':inv.get('billed_to',''),
@@ -431,7 +465,7 @@ def _invoice_import_plan(q, files):
                            'serial_count':parsed['report']['serial_count'],
                            'warnings':['Already imported: this invoice number or PDF is in the quotation.']})
             continue
-        seen_hash.add(parsed['content_sha256']);seen_numbers.add(num)
+        seen_hash.add(parsed['content_sha256']);seen_numbers[num]=parsed['content_sha256']
         planned_assets=[];skipped=0;warnings=list(parsed['warnings'])
         for asset in parsed['assets']:
             a=dict(asset)

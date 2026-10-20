@@ -13,7 +13,7 @@ from invoice_import import read_invoice_pdf
 
 
 def phoenix_like_pdf(invoice_no='0000001001', model='224B-AAB', serials=None,
-                     site='Demo Leisure Centre', qty=None):
+                     site='Demo Leisure Centre', qty=None, late_serials=False):
     serials=list(serials if serials is not None else ['DEMO001','DEMO002','DEMO003'])
     qty=len(serials) if qty is None else qty
     doc=fitz.open()
@@ -28,12 +28,12 @@ def phoenix_like_pdf(invoice_no='0000001001', model='224B-AAB', serials=None,
     p.insert_text((343,330),str(qty),fontsize=7)
     p.insert_text((392,330),'950.00',fontsize=7)
     p.insert_text((485,330),str(950*qty)+'.00',fontsize=7)
-    for i,s in enumerate(serials[:2]):
+    for i,s in enumerate([] if late_serials else serials[:2]):
         p.insert_text((43,347+i*13),'Batch/Serial Number :',fontsize=7)
         p.insert_text((168,347+i*13),s,fontsize=7)
     p=doc.new_page(width=595,height=842)
     p.insert_text((46,311),'Line Item Code',fontsize=7)
-    for i,s in enumerate(serials[2:]):
+    for i,s in enumerate(serials if late_serials else serials[2:]):
         p.insert_text((43,330+i*13),'Batch/Serial Number :',fontsize=7)
         p.insert_text((168,330+i*13),s,fontsize=7)
     raw=doc.tobytes();doc.close()
@@ -98,6 +98,62 @@ class MultiInvoiceTests(unittest.TestCase):
                 res=client.post(f'/api/quotes/{q}/invoice-batch-preview',json={'files':[original,conflict]})
                 self.assertEqual(res.status_code,409)
                 self.assertEqual(client.get(f'/api/quotes/{q}').json()['quote']['assets'],[])
+
+    def test_modern_serials_may_start_on_page_two(self):
+        r=read_invoice_pdf(phoenix_like_pdf(late_serials=True),'synthetic.pdf')
+        self.assertEqual(r['report']['equipment_units'],3)
+        self.assertEqual(r['assets'][0]['serials'],['DEMO001','DEMO002','DEMO003'])
+
+    def test_credit_note_rejected(self):
+        d=fitz.open(stream=phoenix_like_pdf(),filetype='pdf')
+        d[0].insert_text((45,105),'CREDIT NOTE',fontsize=11)
+        raw=d.tobytes();d.close()
+        with self.assertRaisesRegex(ValueError,'Credit notes'):
+            read_invoice_pdf(raw)
+
+    def test_negative_return_line_excluded(self):
+        d=fitz.open(stream=phoenix_like_pdf(),filetype='pdf')
+        p=d[0]
+        for x,value in [(43,'2'),(65,'260G-ABB'),(168,'Returned treadmill'),(343,'1'),
+                        (392,'-950.00'),(485,'-950.00')]:
+            p.insert_text((x,430),value,fontsize=7)
+        raw=d.tobytes();d.close()
+        r=read_invoice_pdf(raw)
+        self.assertEqual(r['report']['equipment_lines'],1)
+        self.assertEqual(r['report']['non_equipment_rows'],1)
+        self.assertEqual(r['excluded'][0]['code'],'260G-ABB')
+        self.assertFalse(r['report']['invoice_sales_prices_used_as_rrp'])
+
+    def test_corrected_invoice_number_blocks_atomic_batch(self):
+        with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,{'SMARTQUOTE_AUTH':'off'}),mock.patch.object(main,'DB',Path(d)/'local.db'):
+            with TestClient(main.app) as client:
+                q=client.post('/api/quotes').json()['quote']['id']
+                files=[payload(phoenix_like_pdf('0000005566',serials=['AAA001']),'Original.pdf'),
+                       payload(phoenix_like_pdf('0000005566',serials=['BBB002']),'Changed.pdf')]
+                r=client.post(f'/api/quotes/{q}/invoice-batch-preview',json={'files':files})
+                self.assertEqual(r.status_code,409,r.text[:200])
+                self.assertEqual(client.get(f'/api/quotes/{q}').json()['quote']['assets'],[])
+
+    def test_single_invoice_api_rejects_repeat_serial(self):
+        with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,{'SMARTQUOTE_AUTH':'off'}),mock.patch.object(main,'DB',Path(d)/'local.db'):
+            with TestClient(main.app) as client:
+                q=client.post('/api/quotes').json()['quote']['id']
+                one=payload(phoenix_like_pdf('0000005567',serials=['AAA111']),'First.pdf')
+                p=client.post(f'/api/quotes/{q}/invoice-preview',json=one)
+                self.assertEqual(p.status_code,200,p.text[:200])
+                done=client.post(f'/api/quotes/{q}/invoice-import',json={**one,'content_sha256':p.json()['content_sha256']})
+                self.assertEqual(done.status_code,200,done.text[:200])
+                two=payload(phoenix_like_pdf('0000005568',serials=['AAA111']),'Second.pdf')
+                denied=client.post(f'/api/quotes/{q}/invoice-preview',json=two)
+                self.assertEqual(denied.status_code,409,denied.text[:200])
+                self.assertEqual(sum(a['qty'] for a in client.get(f'/api/quotes/{q}').json()['quote']['assets']),1)
+
+    def test_invalid_pdf_json_rejected_as_bad_request(self):
+        with tempfile.TemporaryDirectory() as d,mock.patch.dict(os.environ,{'SMARTQUOTE_AUTH':'off'}),mock.patch.object(main,'DB',Path(d)/'local.db'):
+            with TestClient(main.app) as client:
+                q=client.post('/api/quotes').json()['quote']['id']
+                r=client.post(f'/api/quotes/{q}/invoice-batch-preview',json={'files':[{'filename':'X.pdf','content_base64':5}]})
+                self.assertEqual(r.status_code,400,r.text[:200])
 
 
 if __name__=='__main__':unittest.main()
