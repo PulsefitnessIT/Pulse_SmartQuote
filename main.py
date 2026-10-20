@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection_issues,BY_SKU,BY_KEY,DUPLICATE_CODES,CAT,CONFIG,sku_option,config_option,search_products,price_line,decorate_option,suggest_unknown,live_catalogue_option
 from quote_pdf import create_quote_pdf
 from agreement_import import read_agreement_pdf
-from invoice_import import read_invoice_pdf
+from invoice_import import read_invoice_pdf, PLACEHOLDER_SERIALS
 
 app=FastAPI(title='Pulse Fitness SmartQuote',version='0.10.0',docs_url=None,redoc_url=None)
 
@@ -271,13 +271,21 @@ def _invoice_payload(payload):
     return parsed
 
 
+def _invoice_site_key(value):
+    # Allow ordinary label variation without silently joining different sites.
+    text=str(value or '').casefold().replace('&',' and ')
+    return re.sub(r'\s+',' ',re.sub(r'[^a-z0-9]+',' ',text)).strip()
+
+
 def _invoice_same_quote(q,parsed):
     existing=str(q.get('customer','')).strip().casefold()
     incoming=str(parsed['invoice'].get('customer','')).strip().casefold()
-    if q.get('assets') and existing and incoming and existing != incoming:
-        raise HTTPException(409,'This invoice belongs to a different customer. Start a new quotation to avoid mixing equipment.')
-    current_site=str(q.get('site','')).strip().casefold()
-    new_site=str(parsed['invoice'].get('site','')).strip().casefold()
+    # Lease-financed invoices name the finance provider as bill-to; the equipment
+    # delivery site, not finance company, is the grouping key.
+    if q.get('assets') and existing and incoming and existing != incoming and not parsed['invoice'].get('customer_needs_confirmation'):
+        raise HTTPException(409,'Customer names differ between invoices. Confirm the contracting customer before combining.')
+    current_site=_invoice_site_key(q.get('site',''))
+    new_site=_invoice_site_key(parsed['invoice'].get('site',''))
     if q.get('assets') and current_site and new_site and current_site!=new_site:
         raise HTTPException(409,'This invoice is for a different site. Start a new quotation to keep asset locations separate.')
 
@@ -331,6 +339,10 @@ async def invoice_import(id:str,request:Request):
     for source in parsed['assets']:
         asset=match_asset({**source,'id':'invoice_'+uuid.uuid4().hex[:14],
                            'import_batch_id':batch_id})
+        if source.get('invoice_purchase_sku_identified') and not asset.get('selected'):
+            asset['match_type']='Invoice SKU identified — current maintenance price pending'
+            asset['issues']=['The purchase invoice identifies this exact SKU. No alternative machine selection is required; pricing management must confirm the current maintenance RRP basis.']
+            asset['invoice_identity_confirmed']=True
         q['assets'].append(asset)
     for k in ('customer','site','billing_address','delivery_address','account_ref','customer_ref'):
         if not str(q.get(k,'')).strip() and str(invoice.get(k,'')).strip():
@@ -342,6 +354,10 @@ async def invoice_import(id:str,request:Request):
        'type':'historical-sales-invoice','content_sha256':parsed['content_sha256'],
        'invoice_no':invoice['invoice_no'],'invoice_date':invoice['date'],
        'imported':len(parsed['assets']),'batch_id':batch_id,
+       'held_for_scope_review':parsed['excluded'],
+       'invoice_customer_review':parsed['invoice'].get('customer_needs_confirmation',False),
+       'invoice_billed_to':parsed['invoice'].get('billed_to',''),
+       'invoice_delivery_site':parsed['invoice'].get('site',''),
        'warnings_start':warning_start,
        'sheets':[{'sheet':f'Invoice {invoice["invoice_no"]}',
                   'rows':parsed['report']['source_rows'],'added':len(parsed['assets'])}],
@@ -356,6 +372,185 @@ async def invoice_import(id:str,request:Request):
                              'excluded':len(parsed['excluded']),
                              'unstructured_review':len(parsed['unstructured_review']),
                              'added':len(parsed['assets'])}}
+
+
+
+def _serial_key(value):
+    """Serials are site-unique; preserve displayed punctuation in source rows."""
+    return re.sub(r'\s+', '',str(value or '')).upper()
+
+
+def _asset_serial_list(asset):
+    value=asset.get('serials')
+    if isinstance(value,list):
+        return [str(x).strip() for x in value if str(x).strip()]
+    serial=asset.get('serial','')
+    return [v.strip() for v in re.split(r'[,;\n]+',str(serial)) if v.strip()]
+
+
+def _invoice_import_plan(q, files):
+    """Parse and validate an entire invoice batch BEFORE changing the quotation.
+
+    No invoice sale amounts become RRPs, and serial collisions never silently
+    create duplicate equipment. A repeated invoice number is not a new invoice.
+    """
+    if not isinstance(files,list) or not 1 <= len(files) <= 10:
+        raise HTTPException(400,'Select between 1 and 10 PDF invoices for the same site.')
+    total=sum(len(x.get('content_base64','')) for x in files if isinstance(x,dict))
+    if total>95*1024*1024:
+        raise HTTPException(413,'Invoice batch exceeds 70 MB of PDFs; import smaller groups.')
+    reference_site=_invoice_site_key(q.get('site',''))
+    seen_hash={str(x.get('content_sha256','')) for x in q.get('files',[]) if x.get('content_sha256')}
+    seen_numbers={str(x.get('invoice_no','')).lstrip('0') or '0' for x in q.get('files',[])
+                  if x.get('type')=='historical-sales-invoice' and x.get('invoice_no')}
+    existing={}
+    for a in q['assets']:
+        if a.get('excluded'):continue
+        code=str(a.get('code','')).strip().upper()
+        for serial in _asset_serial_list(a):
+            key=_serial_key(serial)
+            if key and key not in PLACEHOLDER_SERIALS:
+                existing.setdefault(key,code)
+    plans=[];report=[];combined_warnings=[];total_added=0;total_units=0;duplicate_units=0
+    for payload in files:
+        if not isinstance(payload,dict):
+            raise HTTPException(400,'Each invoice must contain a filename and PDF.')
+        parsed=_invoice_payload(payload)
+        _invoice_same_quote(q,parsed)
+        inv=parsed['invoice'];site=_invoice_site_key(inv.get('site',''))
+        if site and reference_site and site!=reference_site:
+            raise HTTPException(409,'Invoices are for different delivery sites. Use one site per quotation, or review multi-site cover separately.')
+        if site and not reference_site:reference_site=site
+        num=str(inv.get('invoice_no','')).lstrip('0') or '0'
+        same=parsed['content_sha256'] in seen_hash or num in seen_numbers
+        if same:
+            report.append({'invoice_no':inv.get('invoice_no'),'filename':payload['filename'],
+                           'site':inv.get('site',''),'billed_to':inv.get('billed_to',''),
+                           'already_imported':True,'added_lines':0,'added_units':0,
+                           'skipped_duplicate_units':0,'excluded_lines':parsed['report']['non_equipment_rows'],
+                           'serial_count':parsed['report']['serial_count'],
+                           'warnings':['Already imported: this invoice number or PDF is in the quotation.']})
+            continue
+        seen_hash.add(parsed['content_sha256']);seen_numbers.add(num)
+        planned_assets=[];skipped=0;warnings=list(parsed['warnings'])
+        for asset in parsed['assets']:
+            a=dict(asset)
+            serials=_asset_serial_list(a)
+            overlaps=[v for v in serials if _serial_key(v) in existing]
+            code=str(a.get('code','')).strip().upper()
+            if overlaps:
+                # Different SKUs with the same serial require human investigation.
+                inconsistent=[v for v in overlaps if existing[_serial_key(v)]!=code]
+                if inconsistent:
+                    raise HTTPException(409, f'Invoice {inv["invoice_no"]}: serial {inconsistent[0]} is already linked to a different machine. No invoices imported; inspect the invoices before combining.')
+                if len(serials)!=int(a['qty']):
+                    raise HTTPException(409,f'Invoice {inv["invoice_no"]}: {code} has duplicate serials but quantity cannot be reconciled automatically. No invoices imported.')
+                fresh=[v for v in serials if _serial_key(v) not in existing]
+                skipped+=len(serials)-len(fresh)
+                if not fresh:continue
+                a['qty']=len(fresh)
+                a['serials']=fresh
+                a['serial']=', '.join(fresh)
+                a['original_invoice_qty']=asset['qty']
+                warnings.append(f'Invoice {inv["invoice_no"]}, {code}: {len(serials)-len(fresh)} previously recorded serial(s) excluded to avoid double counting.')
+            for serial in _asset_serial_list(a):
+                key=_serial_key(serial)
+                if key in existing:
+                    raise HTTPException(409,f'Repeated serial {serial} within this batch. No invoices imported.')
+                if key and key not in PLACEHOLDER_SERIALS:existing[key]=code
+            planned_assets.append(a)
+        plans.append({'parsed':parsed,'assets':planned_assets,'payload':payload,'warnings':warnings})
+        qty=sum(int(a['qty']) for a in planned_assets)
+        total_added+=len(planned_assets);total_units+=qty;duplicate_units+=skipped
+        report.append({'invoice_no':inv.get('invoice_no'),'filename':payload['filename'],
+                       'site':inv.get('site',''),'billed_to':inv.get('billed_to',''),
+                       'already_imported':False,'added_lines':len(planned_assets),
+                       'added_units':qty,'skipped_duplicate_units':skipped,
+                       'excluded_lines':parsed['report']['non_equipment_rows'],
+                       'serial_count':parsed['report']['serial_count'],
+                       'warnings':warnings,
+                       'examples':[{'code':a['code'],'name':a['name'],'qty':a['qty']} for a in planned_assets[:6]]})
+        combined_warnings.extend(warnings)
+    if len(q['assets'])+total_added>2000:
+        raise HTTPException(400,'Too many equipment rows for one draft. Import fewer invoices.')
+    return {'plans':plans,'invoices':report,'total_added_lines':total_added,
+            'total_added_units':total_units,'duplicate_serials_skipped':duplicate_units,
+            'warnings':combined_warnings,
+            'content_sha256':hashlib.sha256('|'.join(x.get('content_sha256','') for x in (p['parsed'] for p in plans)).encode()).hexdigest()}
+
+
+@app.post('/api/quotes/{id}/invoice-batch-preview')
+async def invoice_batch_preview(id:str,request:Request):
+    q=getq(id)
+    data=await request.json()
+    plan=_invoice_import_plan(q,data.get('files'))
+    return {'invoices':plan['invoices'], 'total_added_lines':plan['total_added_lines'],
+            'total_added_units':plan['total_added_units'],
+            'duplicate_serials_skipped':plan['duplicate_serials_skipped'],
+            'warnings':plan['warnings'],'content_sha256':plan['content_sha256'],
+            'ready_to_import':bool(plan['plans']),
+            'historical_invoice_sale_values_are_not_maintenance_rrp':True}
+
+
+@app.post('/api/quotes/{id}/invoice-batch-import')
+async def invoice_batch_import(id:str,request:Request):
+    q=getq(id)
+    data=await request.json()
+    plan=_invoice_import_plan(q,data.get('files'))
+    if data.get('content_sha256')!=plan['content_sha256']:
+        raise HTTPException(409,'One or more invoices changed after preview. Preview the batch again; no equipment was added.')
+    if not plan['plans']:
+        raise HTTPException(409,'All these invoices are already on the quotation; no equipment added.')
+    with _lock:
+        c=conn()
+        try: issued=c.execute('SELECT 1 FROM quote_versions WHERE quote_id=? LIMIT 1',(id,)).fetchone()
+        finally:c.close()
+    if issued:raise HTTPException(409,'This quotation has saved PDF versions. Create a new revision before importing more equipment.')
+    # All parsing, location, duplicate and capacity checks have passed, so
+    # append as one transaction. If any invoice is invalid, none are saved.
+    first_invoice=plan['plans'][0]['parsed']['invoice']
+    for item in plan['plans']:
+        parsed=item['parsed'];inv=parsed['invoice'];batch=uuid.uuid4().hex
+        for source in item['assets']:
+            asset=match_asset({**source,'id':'invoice_'+uuid.uuid4().hex[:14],
+                                            'import_batch_id':batch})
+            if source.get('invoice_purchase_sku_identified') and not asset.get('selected'):
+                asset['match_type']='Invoice SKU identified — current maintenance price pending'
+                asset['issues']=['The invoice identifies this exact purchased SKU; do not choose an alternative merely to fill the price. Resolve the current RRP basis separately.']
+                asset['invoice_identity_confirmed']=True
+            q['assets'].append(asset)
+        warning_start=len(q['warnings']);q['warnings']+=item['warnings']
+        q['files'].append({'filename':str(item['payload']['filename'])[:260],
+            'type':'historical-sales-invoice','content_sha256':parsed['content_sha256'],
+            'invoice_no':inv['invoice_no'],'invoice_date':inv['date'],
+            'imported':len(item['assets']),'batch_id':batch,
+            'held_for_scope_review':parsed['excluded'],
+            'invoice_customer_review':inv.get('customer_needs_confirmation',False),
+            'invoice_billed_to':inv.get('billed_to',''),
+            'invoice_delivery_site':inv.get('site',''),
+            'warnings_start':warning_start,
+            'sheets':[{'sheet':f'Invoice {inv["invoice_no"]}',
+                       'rows':parsed['report']['source_rows'],'added':len(item['assets'])}],
+            'at':datetime.datetime.now().isoformat(timespec='seconds')})
+    for key in ('site','delivery_address','account_ref','customer_ref'):
+        if not q.get(key) and first_invoice.get(key):q[key]=first_invoice[key]
+    # With a lease invoice the purchaser/finance company is NOT automatically
+    # the legal maintenance customer. Leave those customer fields for staff.
+    if not first_invoice.get('customer_needs_confirmation'):
+        if not q.get('customer') and first_invoice.get('customer'):
+            q['customer']=first_invoice['customer']
+        if not q.get('billing_address') and first_invoice.get('billing_address'):
+            q['billing_address']=first_invoice['billing_address']
+    if first_invoice.get('customer_needs_confirmation'):
+        q['warnings'].append('Finance company invoice recipient differs from delivery site: check legal maintenance contract customer before customer issue.')
+    q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
+    persist(q)
+    record_event(id,actor(request)['username'],'SALES_INVOICE_BATCH_IMPORT',
+                 f'{len(plan["plans"])} invoices, {plan["total_added_lines"]} lines, {plan["total_added_units"]} units; {plan["duplicate_serials_skipped"]} duplicates omitted; sale prices never RRPs')
+    return {**public(q),'import_report':{'invoice_count':len(plan['plans']),
+            'added':plan['total_added_lines'],'equipment_units':plan['total_added_units'],
+            'duplicate_serials_skipped':plan['duplicate_serials_skipped'],
+            'invoices':plan['invoices']}}
 
 
 @app.post('/api/quotes/{id}/agreement-import')

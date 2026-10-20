@@ -88,6 +88,7 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  $('sumAnnualLabel').textContent=s.priced_rows<s.rows-s.excluded_rows?'PARTIAL subtotal (unpriced machines excluded)':s.lines.some(x=>x.price?.basis==='staff-guided-estimate')?'DRAFT guide total — not approved':'Proposed annual maintenance';
  $('annual').textContent=money(s.annual);$('monthly').textContent=money(s.monthly);$('termTotal').textContent=money(s.term_total);$('sumTier').textContent=q.tier;$('sumUnits').textContent=s.units;$('sumLines').textContent=`${s.priced_rows} / ${s.rows}`;$('sumTerm').textContent=s.term+' year'+(s.term>1?'s':'');$('assetCount').textContent=s.rows;
  $('uploadedText').textContent=q.files.length?`${q.files.length} file(s) imported`:'No files uploaded yet';
+ const invoiced=q.files.filter(x=>x.type==='historical-sales-invoice');const invoiceHistory=$('invoiceImportedHistory');if(invoiceHistory)invoiceHistory.innerHTML=invoiced.length?`<b>${invoiced.length} invoice(s) already on this draft</b><small>${invoiced.map(x=>esc(x.invoice_no||x.filename)).join(' · ')}</small>`:'';
  $('undoLastImport').classList.toggle('hidden',!q.files.at(-1)?.batch_id);
  const oldCalc=q.historic_calcs||null;const comp=$('oldCalcBanner');if(comp){comp.classList.toggle('hidden',!oldCalc);if(oldCalc){comp.innerHTML=`<b>Previous calculations:</b> ${esc(oldCalc.filename)} · ${oldCalc.line_count} lines / ${oldCalc.machine_count} machines · historic equipment total ${money(oldCalc.source_line_sum)} · historic annual contract ${money(oldCalc.previous_quote_annual)}.<br><small>New catalogue-priced quotation: ${money(s.annual)} / year ex VAT${s.issues.length?' · DRAFT, outstanding current-RRP/contract checks':''}. Historical prices are for audit and comparison, never automatic approved 2026 RRPs.</small>`;}}
  const renewal=q.renewal||null;const rb=$('renewalBanner');rb.classList.toggle('hidden',!renewal);
@@ -579,31 +580,34 @@ async function addEquipment(data,fromCatalogue){
 }
 let invoicePending=null;
 function invoiceReviewClear(){invoicePending=null;const panel=$('invoicePreview');panel.innerHTML='';panel.classList.add('hidden');}
-async function previewInvoice(file){if(!file)return;
+async function previewInvoices(inputFiles){
+ const files=[...(inputFiles||[])];if(!files.length)return;
  try{
   invoiceReviewClear();
-  if(!file.name.toLowerCase().endsWith('.pdf'))throw new Error('Choose a PDF sales invoice.');
-  if(file.size>35*1024*1024)throw new Error('Invoice must be below 35 MB.');
-  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
-  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
-  const payload={filename:file.name,content_base64:btoa(binary)};
-  const parsed=await api('/api/quotes/'+state.quote.id+'/invoice-preview',{method:'POST',body:JSON.stringify(payload)});
+  if(files.length>10)throw new Error('Please select up to 10 invoices at a time. You can add more afterwards.');
+  if(files.some(file=>!file.name.toLowerCase().endsWith('.pdf')))throw new Error('Select PDF invoices only.');
+  if(files.some(file=>file.size>35*1024*1024)||files.reduce((sum,f)=>sum+f.size,0)>70*1024*1024)throw new Error('PDF batch too large. Please select a smaller group of invoices.');
+  const encoded=[];
+  for(const file of files){
+    let binary='';const bytes=new Uint8Array(await file.arrayBuffer());
+    for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+    encoded.push({filename:file.name,content_base64:btoa(binary)});
+  }
+  const payload={files:encoded};
+  const parsed=await api('/api/quotes/'+state.quote.id+'/invoice-batch-preview',{method:'POST',body:JSON.stringify(payload)});
   invoicePending={payload,parsed};
-  const inv=parsed.invoice, r=parsed.report;
-  const examples=parsed.candidates.slice(0,12).map(row=>`<tr><td>${esc(row.code)}</td><td>${esc(row.name)}</td><td>${row.qty}</td><td>${row.serial_count}</td><td>${row.page}</td></tr>`).join('');
-  const notImported=parsed.excluded.map(x=>`${esc(x.code)} (${esc(x.reason)})`).join(' · ');
-  const note=parsed.unstructured_review.length?`<details><summary>Descriptions requiring manual checking (${parsed.unstructured_review.length})</summary><ul>${parsed.unstructured_review.slice(0,25).map(x=>`<li>Page ${x.page}: ${esc(x.description)}</li>`).join('')}</ul></details>`:'';
+  const cards=parsed.invoices.map(inv=>{
+    const tag=inv.already_imported?'Already included — skipped':`${inv.added_lines} lines · ${inv.added_units} machines`;
+    const examples=(inv.examples||[]).map(x=>`${esc(x.code)} (${x.qty})`).join(' · ');
+    const caution=inv.warnings?.length?`<details><summary>${inv.warnings.length} check(s) for this invoice</summary><ul>${inv.warnings.slice(0,15).map(w=>`<li>${esc(w)}</li>`).join('')}</ul></details>`:'';
+    return `<div class="invoice-batch-card"><strong>${esc(inv.filename)}</strong><span>${esc(inv.invoice_no||'No reference')} · ${esc(inv.site||'Unidentified site')}</span><b>${tag}</b>${inv.billed_to&&inv.billed_to.toLowerCase()!==inv.site.toLowerCase()?`<small>Billed to ${esc(inv.billed_to)} — confirm maintenance contract customer</small>`:''}<small>${inv.excluded_lines} accessory/software/commercial lines held out for separate review${inv.skipped_duplicate_units?` · ${inv.skipped_duplicate_units} previously recorded serials skipped`:''}</small>${examples?`<small>Example SKUs: ${examples}</small>`:''}${caution}</div>`;
+  }).join('');
   const panel=$('invoicePreview');panel.classList.remove('hidden');
-  panel.innerHTML=`<h3>Review invoice ${esc(inv.invoice_no||'—')} before importing</h3>
-   <p><b>${esc(inv.customer||'Customer not found')}</b> · ${esc(inv.site||'Site not found')} · Invoice dated ${esc(inv.date||'Unknown')}</p>
-   <p><b>${r.equipment_lines} equipment lines / ${r.equipment_units} units</b> · ${r.serial_count} readable serials · ${r.non_equipment_rows} commercial lines excluded · ${r.unstructured_review_rows} descriptions need checking.</p>
-   <p class="invoice-caution">Historic invoice prices are sale amounts, not maintenance RRPs. ${r.zero_sale_equipment_lines} equipment lines show £0 historic sale value; they have NOT been removed. Only current SmartQuote pricing rules are used after import.</p>
-   <div class="invoice-table-wrap"><table class="invoice-table"><thead><tr><th>Code</th><th>Equipment</th><th>Qty</th><th>Serials</th><th>Page</th></tr></thead><tbody>${examples}</tbody></table></div>
-   <p class="editor-hint">${r.equipment_lines>12?'First 12 lines shown. All equipment lines are retained for import. ':''}${r.unstructured_review_rows?'Additional text on the invoice may describe equipment without a clear quantity. Review these manually.':''}</p>
-   ${note}${notImported?`<details><summary>Invoice lines not added as machines (${r.non_equipment_rows})</summary><p>${notImported}</p></details>`:''}
-   ${parsed.warnings.length?`<details><summary>Checks required (${parsed.warnings.length})</summary><ul>${parsed.warnings.slice(0,25).map(w=>`<li>${esc(w)}</li>`).join('')}</ul></details>`:''}
-   ${parsed.already_imported?'<p class="invoice-caution">This invoice has already been imported into this quotation.</p>':''}
-   <div class="invoice-actions"><button id="invoiceConfirm" type="button" class="primary-btn" ${parsed.already_imported||!parsed.capacity_ok?'disabled':''}>Add ${r.equipment_lines} equipment lines to draft</button><button id="invoiceCancel" type="button" class="secondary-btn">Cancel</button></div>`;
+  panel.innerHTML=`<h3>Check invoices before adding equipment</h3>
+  <p><b>${parsed.invoices.length} invoice(s) checked</b> · <b>${parsed.total_added_lines} machine lines</b> · <b>${parsed.total_added_units} machines</b> ready to add · ${parsed.duplicate_serials_skipped} duplicate serials omitted</p>
+  <p class="invoice-caution">Original invoice SKUs and installed console descriptions are preserved. No alternative selection is required where the exact invoice code identifies the machine. Current maintenance RRP/cover is assessed separately. Historical sale prices are not maintenance RRPs.</p>
+  <div class="invoice-batch-list">${cards}</div>
+  <div class="invoice-actions"><button id="invoiceConfirm" type="button" class="primary-btn" ${!parsed.ready_to_import?'disabled':''}>Add equipment from these invoices</button><button id="invoiceCancel" type="button" class="secondary-btn">Cancel</button></div>`;
   $('invoiceConfirm').onclick=confirmInvoiceImport;
   $('invoiceCancel').onclick=invoiceReviewClear;
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -611,13 +615,13 @@ async function previewInvoice(file){if(!file)return;
 }
 async function confirmInvoiceImport(){if(!invoicePending)return;
  const {payload,parsed}=invoicePending;const btn=$('invoiceConfirm');
- if(btn){btn.disabled=true;btn.textContent='Importing invoice equipment…';}
+ if(btn){btn.disabled=true;btn.textContent='Adding equipment to draft…';}
  try{
-  const result=await api('/api/quotes/'+state.quote.id+'/invoice-import',{method:'POST',body:JSON.stringify({...payload,content_sha256:parsed.content_sha256})});
+  const result=await api('/api/quotes/'+state.quote.id+'/invoice-batch-import',{method:'POST',body:JSON.stringify({...payload,content_sha256:parsed.content_sha256})});
   invoiceReviewClear();apply(result);state.filter='all';render();
-  toast(`Imported ${result.import_report.added} equipment lines (${result.import_report.equipment_units} units) from invoice ${esc(result.import_report.invoice_no)}. Check serials and current maintenance prices.`);
+  toast(`Added ${result.import_report.equipment_units} machines from ${result.import_report.invoice_count} invoices. ${result.import_report.duplicate_serials_skipped} duplicate serials skipped.`);
   document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
- }catch(e){if(btn){btn.disabled=false;btn.textContent='Retry import';}toast(e.message,true)}
+ }catch(e){if(btn){btn.disabled=false;btn.textContent='Retry adding invoices';}toast(e.message,true)}
 }
 async function importAgreement(file){if(!file)return;
  try{if(!file.name.toLowerCase().endsWith('.pdf'))throw new Error('Please select a maintenance agreement PDF.');
@@ -660,7 +664,7 @@ function bind(){
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
  $('staffHelp').onclick=quickHelp;$('quoteFind').addEventListener('input',()=>{clearTimeout(window.quoteFindTimer);window.quoteFindTimer=setTimeout(loadRegister,260)});$('quoteStatusFilter').onchange=loadRegister;
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
- $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseInvoice').onclick=()=>$('invoicePicker').click();$('invoicePicker').onchange=e=>previewInvoice(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
+ $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseInvoice').onclick=()=>$('invoicePicker').click();$('invoicePicker').onchange=e=>previewInvoices(e.target.files);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('rrp2026Query').oninput=()=>{rrp2026Offset=0;clearTimeout(rrp2026Timer);rrp2026Timer=setTimeout(searchRrp2026,250)};
  $('rrp2026Filter').onchange=()=>{rrp2026Offset=0;searchRrp2026()};
