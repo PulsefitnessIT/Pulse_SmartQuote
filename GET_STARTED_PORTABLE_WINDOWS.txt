@@ -1,0 +1,31 @@
+PULSE FITNESS SMARTQUOTE V10 — WINDOWS PORTABLE INTERNAL PILOT
+===============================================================
+No Python installation and no pip installation needed on staff PCs.
+
+DOWNLOAD AND OPEN
+1. Open GitHub: https://github.com/PulsefitnessIT/Pulse_SmartQuote/actions
+2. Open the latest successful 'SmartQuote V10 Python tests' run for develop/v10.
+3. Under Artifacts download 'SmartQuote-V10-Windows-No-Python'.
+4. Right-click the downloaded ZIP > Extract All.
+5. Open the extracted SmartQuote_V10_Windows folder and double-click
+   Start_SmartQuote_V10.bat (or Pulse_SmartQuote_V10.exe).
+6. Create a local administrator account on first run. Keep the command window open.
+7. The browser opens on localhost; upload an example asset list to test.
+
+IMPORTANT: Code > Download ZIP downloads developer SOURCE, not this Windows build.
+The source ZIP still requires Python 3.11+. You do not need to merge V10 to main.
+
+SAFETY AND SUPPORT
+- This is a controlled INTERNAL PILOT. Prices/tariffs remain under review.
+- The application only listens on your own computer (127.0.0.1).
+- Do not copy the installation into C:\Program Files or a read-only directory.
+  A local folder under Documents (outside a read-only corporate network share) is best.
+- Back up smartquote_local.db before upgrading. Install the next version into a NEW
+  folder; copy the backed-up database only if intentionally carrying quotes forward.
+- DO NOT overwrite older folders, and DO NOT delete previous SQLite databases.
+- No customer databases are included in the downloaded ZIP.
+- The EXE is not digitally code-signed; corporate IT/Windows security policies may
+  require review before running it. Ask IT rather than overriding security policy.
+- This build is local and single-PC only, not a central multi-user server.
+- If another SmartQuote uses port 8765, this build chooses another free localhost port.
+- There is no need for Python 3.11 or internet access after the ZIP is downloaded.

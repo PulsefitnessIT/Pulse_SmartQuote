@@ -92,3 +92,114 @@ jobs:
           } finally {
             Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
           }
+
+  windows_portable:
+    name: Build and test no-Python Windows application
+    needs: [regression, windows_download_smoke]
+    runs-on: windows-latest
+    timeout-minutes: 40
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build from verified, customer-data-free source ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'SmartQuote_V10_Source_Pilot.zip'
+          python build_v10_pilot.py --output $src
+          if ($LASTEXITCODE -ne 0) { throw 'Source package verification failed' }
+          $unpacked = Join-Path $env:RUNNER_TEMP 'verified-source'
+          Expand-Archive -LiteralPath $src -DestinationPath $unpacked -Force
+          $clean = Join-Path $unpacked 'SmartQuote_V10'
+          if (-not (Test-Path (Join-Path $clean 'windows_portable.py'))) { throw 'Portable entrypoint missing from verified source' }
+          if (-not (Test-Path (Join-Path $clean 'Start_SmartQuote_V10.bat'))) { throw 'Portable launcher missing from verified source' }
+          Get-ChildItem $clean -Recurse -File | Where-Object { $_.Name -eq 'smartquote_local.db' } | ForEach-Object { throw 'User database in source package!' }
+      - name: Freeze dependencies and Python into Windows EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $clean = Join-Path $env:RUNNER_TEMP 'verified-source\SmartQuote_V10'
+          Set-Location $clean
+          python -m pip install --disable-pip-version-check -r requirements.txt 'pyinstaller>=6.12,<7'
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller dependency setup failed' }
+          python -m PyInstaller --noconfirm --clean --onedir --contents-directory . --console `
+            --name Pulse_SmartQuote_V10 `
+            --collect-submodules uvicorn `
+            --collect-all fitz `
+            --collect-all pymupdf `
+            --collect-data reportlab `
+            --add-data 'data;data' --add-data 'static;static' `
+            windows_portable.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows executable compilation failed' }
+          $from = Join-Path $clean 'dist\Pulse_SmartQuote_V10'
+          $to = Join-Path $env:RUNNER_TEMP 'SmartQuote_V10_Windows'
+          New-Item -ItemType Directory -Path $to -Force | Out-Null
+          Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
+          Copy-Item (Join-Path $clean 'Start_SmartQuote_V10.bat') -Destination $to
+          Copy-Item (Join-Path $clean 'GET_STARTED_PORTABLE_WINDOWS.txt') -Destination $to
+          if (-not (Test-Path (Join-Path $to 'Pulse_SmartQuote_V10.exe'))) { throw 'EXE was not included in output' }
+          if (-not (Test-Path (Join-Path $to 'data\catalog.json'))) { throw 'Catalogue was not included in output' }
+          if (-not (Test-Path (Join-Path $to 'static\index.html'))) { throw 'UI was not included in output' }
+          Get-ChildItem $to -Recurse -File | Where-Object { $_.Name -eq 'smartquote_local.db' -or $_.Extension -eq '.sqlite' } | ForEach-Object { throw 'Private customer data found in portable ZIP!' }
+      - name: Start EXE without Python and test local HTTP upload
+        shell: pwsh
+        env:
+          SMARTQUOTE_AUTH: 'off'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'SmartQuote_V10_Windows'
+          $exe = Join-Path $root 'Pulse_SmartQuote_V10.exe'
+          # The extracted EXE uses its own embedded Python runtime, not the Python CLI.
+          & $exe --check
+          if ($LASTEXITCODE -ne 0) { throw 'Portable EXE missing runtime/data dependencies' }
+          $server = Start-Process -FilePath $exe -ArgumentList @('--no-browser') -WorkingDirectory $root -PassThru
+          try {
+            $base = 'http://127.0.0.1:8765'
+            $healthy = $false
+            for ($try=0; $try -lt 100; $try++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $h=Invoke-RestMethod -Uri "$base/api/health" -TimeoutSec 2
+                if ($h.ok -and $h.api_contract -eq 10 -and $h.version -match 'V10') { $healthy=$true; break }
+              } catch { }
+              if ($server.HasExited) { throw 'Portable EXE exited before health check' }
+            }
+            if (-not $healthy) { throw 'Portable EXE did not start a V10 API server' }
+            $quote=Invoke-RestMethod -Uri "$base/api/quotes" -Method Post -ContentType 'application/json' -Body '{}'
+            $id=$quote.quote.id
+            if (-not $id) { throw 'Could not create draft quotation in portable EXE' }
+            $raw=[Text.Encoding]::UTF8.GetBytes("Site,Make,Model,Description,Serial Number,Quantity`nClub,Pulse,260G-AAS,Treadmill,PORTABLE-1234,1`n")
+            $request=@{filename='portable_test.csv';content_base64=[Convert]::ToBase64String($raw)}
+            $json=$request | ConvertTo-Json -Compress
+            $preview=Invoke-RestMethod -Uri "$base/api/quotes/$id/import-preview" -Method Post -ContentType 'application/json' -Body $json
+            if ($preview.source_rows -ne 1) { throw 'Portable preview did not detect one machine' }
+            $request.content_sha256=$preview.content_sha256
+            $imported=Invoke-RestMethod -Uri "$base/api/quotes/$id/import" -Method Post -ContentType 'application/json' -Body ($request | ConvertTo-Json -Compress)
+            if ($imported.import_report.added -ne 1) { throw 'Portable import failed' }
+            Write-Host 'No-Python Windows portable verified: EXE startup, V10 health, asset preview and asset import.'
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }
+      - name: Final portable package checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'SmartQuote_V10_Windows'
+          # Smoke-test creates a temporary SQLite database; it must NOT ship to staff.
+          Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Name -eq 'smartquote_local.db' -or $_.Extension -eq '.sqlite' } | Remove-Item -Force
+          $remaining=Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Name -eq 'smartquote_local.db' -or $_.Extension -eq '.sqlite' }
+          if ($remaining) { throw 'Portable bundle still contains a local test database' }
+          $exe=Join-Path $root 'Pulse_SmartQuote_V10.exe'
+          $hash=(Get-FileHash -Algorithm SHA256 $exe).Hash
+          "ExeSha256=$hash" | Set-Content -Path (Join-Path $root 'BUILD_SHA256.txt')
+          Write-Host "Portable EXE SHA256: $hash"
+      - name: Upload Windows application — Python not required on staff PCs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartQuote-V10-Windows-No-Python
+          path: ${{ runner.temp }}/SmartQuote_V10_Windows/
+          retention-days: 14
+          if-no-files-found: error

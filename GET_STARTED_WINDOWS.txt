@@ -2,6 +2,12 @@ PULSE FITNESS SMARTQUOTE V10 - WINDOWS START GUIDE
 ==================================================
 CONTROLLED INTERNAL PILOT - NOT APPROVED FOR CUSTOMER QUOTATIONS
 
+FOR STAFF: DO NOT USE THE 'CODE > DOWNLOAD ZIP' DEVELOPER SOURCE DOWNLOAD.
+Use Actions > latest green SmartQuote V10 run > Artifacts >
+'SmartQuote-V10-Windows-No-Python'. Extract once and launch
+'Start_SmartQuote_V10.bat'. This download DOES NOT need Python installed.
+The developer source ZIP below does still require Python 3.11+.
+
 DOWNLOAD THE FULL PROGRAM DIRECTLY FROM GITHUB
 ------------------------------------------------
 1. Open https://github.com/PulsefitnessIT/Pulse_SmartQuote

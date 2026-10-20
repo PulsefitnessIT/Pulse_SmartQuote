@@ -20,7 +20,7 @@ ALLOWED_DATA = {
 }
 ROOT_EXTENSIONS = {".py", ".md", ".bat", ".sh"}
 TRACKED_START_NOTES = {"README_V7_START_HERE.txt", "README_V8_START_HERE.txt", "README_V9_START_HERE.txt",
-                       "requirements.txt", "requirements-test.txt", "GET_STARTED_WINDOWS.txt"}
+                       "requirements.txt", "requirements-test.txt", "GET_STARTED_WINDOWS.txt, "GET_STARTED_PORTABLE_WINDOWS.txt"}
 PREFIX = "SmartQuote_V10/"
 
 

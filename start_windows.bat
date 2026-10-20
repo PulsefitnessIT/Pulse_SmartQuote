@@ -31,6 +31,10 @@ if not defined PYBOOT (
   echo ERROR: Python 3.11 or newer was not found.
   echo Download Python from https://www.python.org/downloads/windows/
   echo Select Add Python to PATH during installation, then try again.
+  echo.
+  echo For staff, use the no-Python Windows application from GitHub Actions:
+  echo https://github.com/PulsefitnessIT/Pulse_SmartQuote/actions
+  echo Open the latest successful V10 run and download SmartQuote-V10-Windows-No-Python.
   pause
   exit /b 1
 )
