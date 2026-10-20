@@ -41,3 +41,54 @@ jobs:
           name: Pulse-SmartQuote-V10-Internal-Pilot
           path: dist/Pulse_Fitness_SmartQuote_V10_Internal_Pilot.zip
           retention-days: 14
+
+  windows_download_smoke:
+    name: Extract ZIP and start on Windows
+    needs: regression
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build release ZIP and test actual Windows download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'Pulse Fitness SmartQuote V10 Download.zip'
+          python build_v10_pilot.py --output $download
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build the full download ZIP' }
+          $extracted = Join-Path $env:RUNNER_TEMP 'SmartQuote Folder With Spaces'
+          Expand-Archive -LiteralPath $download -DestinationPath $extracted -Force
+          Set-Location (Join-Path $extracted 'SmartQuote_V10')
+          if (-not (Test-Path 'requirements.txt')) { throw 'Missing packaged requirements.txt' }
+          if (-not (Test-Path 'startup_manager.py')) { throw 'Missing packaged startup helper' }
+          & cmd.exe /c 'start_windows.bat --check'
+          if ($LASTEXITCODE -ne 0) { throw 'Windows first-run bootstrap failed' }
+          & cmd.exe /c 'start_windows.bat --check'
+          if ($LASTEXITCODE -ne 0) { throw 'Windows cached second-run startup failed' }
+      - name: HTTP health check from extracted Windows package
+        shell: pwsh
+        env:
+          SMARTQUOTE_AUTH: 'off'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:RUNNER_TEMP 'SmartQuote Folder With Spaces\SmartQuote_V10'
+          Set-Location $base
+          $python = Join-Path $base '.venv\Scripts\python.exe'
+          $server = Start-Process -FilePath $python -ArgumentList @('-m','uvicorn','main:app','--host','127.0.0.1','--port','8765') -PassThru
+          try {
+            $healthy = $false
+            for ($try = 0; $try -lt 60; $try++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $response = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/health' -TimeoutSec 2
+                if ($response.ok -and $response.name -eq 'Pulse Fitness SmartQuote') { $healthy = $true; break }
+              } catch { }
+            }
+            if (-not $healthy) { throw 'Extracted application failed HTTP /api/health' }
+            Write-Host 'Extracted Windows startup/health check passed.'
+          } finally {
+            Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          }

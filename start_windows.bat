@@ -1,19 +1,45 @@
 @echo off
+setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
-where py >nul 2>nul
-if %errorlevel%==0 (set PY=py) else (set PY=python)
-%PY% -m pip install -r requirements.txt
 if errorlevel 1 (
- echo Failed to install Python dependencies. Please contact IT.
- pause
- exit /b 1
+  echo ERROR: Cannot access the extracted SmartQuote folder.
+  echo Move the extracted folder to Documents and try again.
+  pause
+  exit /b 1
 )
-%PY% manage_users.py bootstrap
-if errorlevel 1 (
- echo SmartQuote account setup failed. Application not started.
- pause
- exit /b 1
+
+if not exist "startup_manager.py" (
+  echo ERROR: The SmartQuote launcher is missing startup_manager.py.
+  echo Download the complete ZIP from GitHub, right-click it and select Extract All.
+  echo Do not run this file directly from inside a ZIP preview.
+  pause
+  exit /b 1
 )
-start "" /B cmd /C "timeout /t 3 /nobreak >nul & start http://127.0.0.1:8765"
-%PY% -m uvicorn main:app --host 127.0.0.1 --port 8765
-pause
+
+set "PYBOOT="
+py -3.11 -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PYBOOT=py -3.11"
+if not defined PYBOOT (
+  py -3 -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
+  if not errorlevel 1 set "PYBOOT=py -3"
+)
+if not defined PYBOOT (
+  python -c "import sys; assert sys.version_info >= (3,11)" >nul 2>nul
+  if not errorlevel 1 set "PYBOOT=python"
+)
+if not defined PYBOOT (
+  echo ERROR: Python 3.11 or newer was not found.
+  echo Download Python from https://www.python.org/downloads/windows/
+  echo Select Add Python to PATH during installation, then try again.
+  pause
+  exit /b 1
+)
+
+%PYBOOT% "startup_manager.py" %*
+set "RESULT=%errorlevel%"
+if not "%RESULT%"=="0" (
+  echo.
+  echo SmartQuote did not start. See the message above for a suggested fix.
+  pause
+)
+exit /b %RESULT%

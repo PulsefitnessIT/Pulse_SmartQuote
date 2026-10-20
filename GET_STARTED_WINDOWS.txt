@@ -1,0 +1,43 @@
+PULSE FITNESS SMARTQUOTE V10 - WINDOWS START GUIDE
+==================================================
+CONTROLLED INTERNAL PILOT - NOT APPROVED FOR CUSTOMER QUOTATIONS
+
+DOWNLOAD THE FULL PROGRAM DIRECTLY FROM GITHUB
+------------------------------------------------
+1. Open https://github.com/PulsefitnessIT/Pulse_SmartQuote_V9
+2. Select the branch dropdown and choose: develop/v10
+3. Click the green Code button > Download ZIP.
+4. In Windows Explorer right-click the downloaded ZIP > Extract All.
+5. Open the extracted folder containing start_windows.bat and requirements.txt.
+6. Double-click start_windows.bat. Keep the black window open while using SmartQuote.
+7. On the first run, SmartQuote creates a private .venv and installs its Python
+   dependencies. You must have Python 3.11+ installed and internet access on the
+   first run. Create your administrator sign-in when asked.
+8. The browser opens at http://127.0.0.1:8765
+
+ALTERNATIVE: GitHub Actions > SmartQuote V10 Python tests > latest successful run
+> Artifacts > Pulse-SmartQuote-V10-Internal-Pilot. GitHub wraps the program ZIP
+inside an artifact ZIP, so use Extract All twice before double-clicking.
+
+TROUBLESHOOTING
+---------------
+- "requirements.txt missing": extract the COMPLETE ZIP, not individual files.
+- "Python not found": install Python 3.11+ from python.org, select Add to PATH.
+- "pip failed": check internet access and company proxy/firewall; ask IT.
+- Check installation without launching: start_windows.bat --check
+- Do not launch from inside a ZIP preview or a read-only network folder.
+- Do not close the black window while SmartQuote is in use.
+- The downloaded ZIP includes the Python SOURCE, not an offline .exe. It needs
+  Python and a one-time package installation on the PC.
+
+UPGRADING WITHOUT LOSING CUSTOMER QUOTES
+-----------------------------------------
+1. Close the previous SmartQuote window. Make a copy of the old application folder.
+2. Extract the new download into a SEPARATE folder.
+3. Back up the existing smartquote_local.db before doing anything else.
+4. If you are intentionally carrying your old local quotes forward, copy that
+   smartquote_local.db from the old folder into the new folder BEFORE first start.
+5. Never overwrite the previous install folder or delete your old database.
+
+SmartQuote is a single-PC internal pilot, not a shared company production system.
+Historical/catalogue and maintenance pricing approval remains outstanding.

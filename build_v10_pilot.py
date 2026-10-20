@@ -19,7 +19,8 @@ ALLOWED_DATA = {
     "historical_catalogue_manifest.json",
 }
 ROOT_EXTENSIONS = {".py", ".md", ".bat", ".sh"}
-TRACKED_START_NOTES = {"README_V7_START_HERE.txt", "README_V8_START_HERE.txt", "README_V9_START_HERE.txt"}
+TRACKED_START_NOTES = {"README_V7_START_HERE.txt", "README_V8_START_HERE.txt", "README_V9_START_HERE.txt",
+                       "requirements.txt", "requirements-test.txt", "GET_STARTED_WINDOWS.txt"}
 PREFIX = "SmartQuote_V10/"
 
 
@@ -60,6 +61,9 @@ def build(output, root=ROOT):
         archive.writestr(PREFIX + "BUILD_REPORT.json", json.dumps(manifest, indent=2))
         archive.writestr(PREFIX + "READ_THIS_FIRST.txt",
                          "INTERNAL PILOT ONLY. Not a customer release.\n"
+                         "Extract All before double-clicking start_windows.bat.\n"
+                         "Read GET_STARTED_WINDOWS.txt for download/install instructions.\n"
+                         "Requires Python 3.11+ and internet on first launch.\n"
                          "The historical index may be absent: inspect BUILD_REPORT.json.\n"
                          "Install full 2020-2026 index with install_historical_catalogue.py.\n"
                          "Keep and back up existing smartquote_local.db separately.\n"
@@ -79,6 +83,7 @@ def verify(path):
             if actual != expected:
                 raise ValueError(f"Content hash mismatch: {filename}")
         required = {"main.py", "engine.py", "start_windows.bat",
+                    "startup_manager.py", "requirements.txt", "GET_STARTED_WINDOWS.txt",
                     "data/catalog.json", "data/pricing.json", "static/index.html"}
         if not required.issubset(report["sha256"]):
             raise ValueError("Required application files missing from pilot package.")
