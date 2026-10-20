@@ -2,8 +2,8 @@
   "archive_scope": "Physical 2020-2024 revisions combined with 2025-2026 recovered identity snapshots; original 2025-2026 workbooks still require source verification",
   "archive_review_status": "Not approved",
   "source_files": 22,
-  "snapshots": 123852,
-  "unique_skus": 7390,
+  "snapshots": 123621,
+  "unique_skus": 7159,
   "alias_codes": 231,
   "ambiguous_alias_codes": 114,
   "worksheets": [
@@ -578,8 +578,8 @@
       "year": 2020,
       "revision": "j",
       "sheet": "Suppliers",
-      "status": "read",
-      "equipment_rows": 231
+      "status": "skipped",
+      "reason": "Non-equipment supplier accounts sheet"
     },
     {
       "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
@@ -1057,7 +1057,7 @@
     }
   ],
   "by_year": {
-    "2020": 57951,
+    "2020": 57720,
     "2021": 4631,
     "2022": 15647,
     "2023": 6259,
@@ -1066,15 +1066,15 @@
     "2026": 6877
   },
   "reconciliation": {
-    "new_source_unique_skus": 6945,
+    "new_source_unique_skus": 6714,
     "recovered_source_unique_skus": 6909,
     "intersection_unique_skus": 6464,
-    "new_only_unique_skus": 481,
+    "new_only_unique_skus": 250,
     "recovered_only_unique_skus": 445,
     "newer_recovered_variants_preserved": 6441,
     "new_source_variants_preferred": 23,
     "physical_files_read": 19,
-    "physical_observations_read": 90933,
+    "physical_observations_read": 90702,
     "recovered_2025_2026_observations": 32919
   },
   "pricing_status": "IDENTITY ONLY - NO APPROVED RRP",

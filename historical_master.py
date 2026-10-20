@@ -243,6 +243,15 @@ def build_master(files: list[Path], destination: Path):
             try:
                 sheets = read_sheets(source)
                 for sheet_name, rows in sheets:
+                    # Old price masters also contain Sage supplier accounts with
+                    # valid-looking numeric codes and stock-name headings. Those
+                    # are NOT gym equipment, even if their fields match.
+                    if normal(sheet_name) in {'suppliers', 'supplier accounts'}:
+                        report.append({'file': source.name, 'year': year,
+                                       'revision': revision, 'sheet': sheet_name,
+                                       'status': 'skipped',
+                                       'reason': 'Non-equipment supplier accounts sheet'})
+                        continue
                     sheet_count = 0
                     header_at, fields, values = identify_header(rows)
                     if header_at is None:

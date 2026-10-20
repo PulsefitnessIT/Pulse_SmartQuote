@@ -65,6 +65,25 @@ class HistoricalMasterTests(unittest.TestCase):
             changes = json.loads((folder / "out/historical_review.json").read_text())
             self.assertTrue(any(x["type"] == "changed_field" and x["field"] == "console" for x in changes))
 
+    def test_suppliers_are_not_equipment_skus(self):
+        # Master revision j has a genuine "Suppliers" sheet with 231 supplier
+        # account numbers. Matching those as gym assets would be unsafe.
+        from unittest.mock import patch
+        source = Path('2020 - Master Input - Transition_Iss.j.xlsx')
+        sheets = [
+            ('Suppliers', iter([['Code','Stock Item Name'],
+                                ['00000001','Dummy Supplier Account']])),
+            ('Assembled Database',iter([['Code','Stock Item Name'],
+                                        ['260G-AAS','Run - Treadmill']]))]
+        with tempfile.TemporaryDirectory() as temp, patch('historical_master.read_sheets',return_value=iter(sheets)):
+            result=build_master([source],Path(temp)/'archive')
+            self.assertEqual(result['unique_skus'],1)
+            idx=json.loads((Path(temp)/'archive/historical_catalogue_index.json').read_text())
+            self.assertIn('260G-AAS',idx['records'])
+            self.assertNotIn('00000001',idx['records'])
+            self.assertTrue(any(r.get('reason')=='Non-equipment supplier accounts sheet'
+                                for r in result['worksheets']))
+
     def test_duplicate_conflict_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "2020 - Master.csv"
