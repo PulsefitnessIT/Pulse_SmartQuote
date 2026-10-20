@@ -1,5 +1,6 @@
 """Prevents reintroducing a missing requirements.txt into Windows downloads."""
 import contextlib
+import os
 import io
 import json
 from pathlib import Path
@@ -58,6 +59,43 @@ class WindowsStartupTests(unittest.TestCase):
             urlopen.return_value.__enter__.return_value = io.BytesIO(
                 json.dumps({'ok': True, 'name': 'Not SmartQuote'}).encode())
             self.assertFalse(startup_manager.smartquote_running())
+
+    def test_old_v9_server_is_not_mistaken_for_v10(self):
+        with mock.patch.object(startup_manager.urllib.request, 'urlopen') as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(
+                json.dumps({'ok': True, 'name': 'Pulse Fitness SmartQuote',
+                            'version': 'V9 pilot'}).encode())
+            self.assertFalse(startup_manager.smartquote_running())
+
+    def test_other_v10_installation_is_not_mistaken_for_this_one(self):
+        with mock.patch.object(startup_manager.urllib.request, 'urlopen') as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(
+                json.dumps({'ok': True, 'name': 'Pulse Fitness SmartQuote',
+                            'version': 'V10 internal pilot', 'api_contract': 10,
+                            'instance_id': 'different-install'}).encode())
+            self.assertFalse(startup_manager.smartquote_running())
+
+    def test_healthy_same_installation_is_recognized(self):
+        with mock.patch.object(startup_manager.urllib.request, 'urlopen') as urlopen:
+            urlopen.return_value.__enter__.return_value = io.BytesIO(
+                json.dumps({'ok': True, 'name': 'Pulse Fitness SmartQuote',
+                            'version': 'V10 internal pilot', 'api_contract': 10,
+                            'instance_id': startup_manager.instance_id()}).encode())
+            self.assertTrue(startup_manager.smartquote_running())
+
+    def test_busy_v9_port_moves_v10_to_next_available(self):
+        def legacy_or_other(port, root=None):
+            return False
+        with mock.patch.object(startup_manager, 'smartquote_running', side_effect=legacy_or_other), \
+             mock.patch.object(startup_manager, 'port_in_use', side_effect=lambda port: port == 8765):
+            self.assertEqual(startup_manager.choose_port(ports=(8765,8766)), (8766,False))
+
+    def test_busy_ports_have_actionable_error(self):
+        with mock.patch.object(startup_manager, 'smartquote_running', return_value=False), \
+             mock.patch.object(startup_manager, 'port_in_use', return_value=True):
+            with self.assertRaises(startup_manager.SetupError) as cm:
+                startup_manager.choose_port(ports=(8765,8766))
+            self.assertIn('Close older SmartQuote', str(cm.exception))
 
 
 if __name__ == '__main__':

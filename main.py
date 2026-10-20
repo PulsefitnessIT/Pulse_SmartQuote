@@ -14,6 +14,7 @@ import bulk_review
 import security
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
+from startup_manager import instance_id as installation_instance_id
 from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
@@ -144,9 +145,9 @@ def public(q):
  return {'quote':q,'summary':summary,'display_groups':grouped}
 
 @app.get('/')
-def home():return FileResponse(ROOT/'static/index.html')
+def home():return FileResponse(ROOT/'static/index.html',headers={'Cache-Control':'no-store, must-revalidate'})
 @app.get('/api/health')
-def health():return {'ok':True,'name':'Pulse Fitness SmartQuote','mode':'local controlled pilot','version':'V10 internal pilot','auth_setup_required':security.enabled() and security.count()==0}
+def health():return {'ok':True,'name':'Pulse Fitness SmartQuote','mode':'local controlled pilot','version':'V10 internal pilot','api_contract':10,'instance_id':installation_instance_id(ROOT),'auth_setup_required':security.enabled() and security.count()==0}
 @app.get('/api/bootstrap')
 def bootstrap():
  return {'source':PRICING['source'],'counts':PRICING['source_counts'],'tiers':PRICING['tiers'],'packages':PACKAGES,'rates':PRICING['rates'],'mode':'Local pilot with user sign-in; not a production identity provider'}

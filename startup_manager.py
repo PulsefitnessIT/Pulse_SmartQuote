@@ -121,29 +121,62 @@ def prepare_dependencies(root=ROOT):
     return interpreter
 
 
-def smartquote_running():
-    # Do not open unrelated services that happen to use the same port.
+# A V9 or another SmartQuote installation may already use port 8765. The browser
+# must NEVER open that server when staff launch the V10 folder they downloaded.
+# Match both the API contract and the installation directory fingerprint.
+PORT_CHOICES = tuple(range(PORT, PORT + 8))
+API_CONTRACT = 10
+
+
+def instance_id(root=ROOT):
+    canonical = os.path.normcase(str(Path(root).resolve()))
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:16]
+
+
+def app_url(port):
+    return f"http://127.0.0.1:{port}"
+
+
+def smartquote_running(port=PORT, root=ROOT):
+    """Only true for this actual V10 installation, NOT any SmartQuote response."""
     try:
-        with urllib.request.urlopen(URL + "/api/health", timeout=1.5) as result:
-            health = json.load(result)
-            return health.get("ok") is True and health.get("name") == "Pulse Fitness SmartQuote"
-    except (OSError, ValueError, urllib.error.URLError):
+        with urllib.request.urlopen(app_url(port) + "/api/health", timeout=1.5) as response:
+            health = json.load(response)
+        return (health.get("ok") is True
+                and health.get("name") == "Pulse Fitness SmartQuote"
+                and health.get("api_contract") == API_CONTRACT
+                and health.get("instance_id") == instance_id(root))
+    except (OSError, ValueError, TypeError, urllib.error.URLError):
         return False
 
 
-def port_in_use():
+def port_in_use(port=PORT):
     try:
-        with socket.create_connection(("127.0.0.1", PORT), timeout=1):
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
             return True
     except OSError:
         return False
 
 
-def open_when_ready(timeout=45):
+def choose_port(root=ROOT, ports=PORT_CHOICES):
+    """Reuse only the same V10 installation; otherwise use another safe localhost port."""
+    for port in ports:
+        if smartquote_running(port=port, root=root):
+            return port, True
+    for port in ports:
+        if not port_in_use(port):
+            return port, False
+    raise SetupError(
+        "All SmartQuote ports (8765-8772) are in use. Close older SmartQuote "
+        "command windows and try again. Your quotation data has not changed."
+    )
+
+
+def open_when_ready(port=PORT, root=ROOT, timeout=45):
     until = time.monotonic() + timeout
     while time.monotonic() < until:
-        if smartquote_running():
-            webbrowser.open(URL)
+        if smartquote_running(port=port, root=root):
+            webbrowser.open(app_url(port))
             return
         time.sleep(0.5)
 
@@ -158,12 +191,15 @@ def start(root=ROOT, check_only=False):
         print("To launch SmartQuote, double-click start_windows.bat without --check.")
         return 0
 
-    if smartquote_running():
-        print("SmartQuote is already running. Opening the existing browser page.", flush=True)
-        webbrowser.open(URL)
+    chosen_port, already_running = choose_port(root)
+    if already_running:
+        print("This V10 installation is already running at " + app_url(chosen_port), flush=True)
+        webbrowser.open(app_url(chosen_port))
         return 0
-    if port_in_use():
-        raise SetupError("Port 8765 is already in use by another application. Close it or contact IT.")
+    if chosen_port != PORT:
+        print("NOTE: Port 8765 is occupied by an older or different application.", flush=True)
+        print("SmartQuote V10 will use its own address: " + app_url(chosen_port), flush=True)
+        print("Check the page header says V10 INTERNAL PILOT, not V9.", flush=True)
 
     print("[3/3] Checking staff sign-in ...", flush=True)
     try:
@@ -171,13 +207,13 @@ def start(root=ROOT, check_only=False):
     except (OSError, subprocess.CalledProcessError) as exc:
         raise SetupError("Staff account setup was cancelled or failed. No server started.") from exc
 
-    print("Starting SmartQuote securely on this computer: " + URL, flush=True)
+    print("Starting SmartQuote V10 securely on this computer: " + app_url(chosen_port), flush=True)
     print("Leave this window open while using SmartQuote; close it to stop the server.", flush=True)
-    threading.Thread(target=open_when_ready, daemon=True).start()
+    threading.Thread(target=open_when_ready, args=(chosen_port, root), daemon=True).start()
     try:
         process = subprocess.run(
             [str(interpreter), "-m", "uvicorn", "main:app",
-             "--host", "127.0.0.1", "--port", str(PORT)],
+             "--host", "127.0.0.1", "--port", str(chosen_port)],
             cwd=root,
         )
     except OSError as exc:

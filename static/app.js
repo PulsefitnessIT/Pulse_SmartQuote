@@ -5,15 +5,36 @@ const money=n=>'£'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2
 const toast=(message,error=false)=>{const t=$('toast');t.innerText=message;t.className='toast'+(error?' error':'');setTimeout(()=>{t.className='toast hidden'},5000)};
 let saveQueue=Promise.resolve();
 function saveMessage(message,bad=false){const el=$('saveStatus');if(el){el.textContent=message;el.className=bad?'save-failed':''}}
-async function api(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(state.token?{'Authorization':'Bearer '+state.token}:{}),...(options.headers||{})}});let data;try{data=await r.json()}catch(e){data={detail:`Server error (${r.status})`}}if(!r.ok)throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data}
+async function diagnoseConnection(error){
+  // A JavaScript "Failed to fetch" does not identify a bad workbook. Check the
+  // actual backend instead; never silently retry write requests after a drop.
+  try{
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),2500);
+    let response;
+    try{response=await fetch('/api/health',{signal:controller.signal,cache:'no-store'})}finally{clearTimeout(timer)}
+    if(response.ok){
+      const health=await response.json();
+      if(health.api_contract!==10)return 'This browser is connected to an older SmartQuote server (possibly V9), not the downloaded V10. Close the older black command window, double-click start_windows.bat in the new V10 folder, then use the address it opens.';
+      return 'SmartQuote V10 is running but the request was interrupted. Your equipment may not have been imported. Check the quote before retrying. If this persists, restart from start_windows.bat and review the command window for errors.';
+    }
+  }catch(ignored){}
+  return 'Cannot contact the local SmartQuote server. Leave the black SmartQuote V10 command window open. If it has closed, double-click start_windows.bat again and use the exact address shown there. Your original spreadsheet has not been changed.';
+}
+async function api(path,options={}){
+  let r;
+  try{r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(state.token?{'Authorization':'Bearer '+state.token}:{}),...(options.headers||{})}})}
+  catch(e){throw new Error(await diagnoseConnection(e))}
+  let data;try{data=await r.json()}catch(e){data={detail:`SmartQuote server returned an invalid response (HTTP ${r.status}). Check the black command window for details.`}}
+  if(!r.ok)throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data;
+}
 async function init(){
  $('loginForm').onsubmit=async e=>{e.preventDefault();try{
   const result=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username:$('loginName').value,password:$('loginPassword').value})});
   state.token=result.token;sessionStorage.setItem('smartquote_token',result.token);$('loginPassword').value='';$('loginGate').classList.add('hidden');await launchWorkspace();
  }catch(ex){$('loginError').textContent=ex.message}};
- try{const health=await api('/api/health');if(health.auth_setup_required){$('loginError').textContent='No administrator account yet. In the application folder run: python manage_users.py bootstrap';$('loginGate').classList.remove('hidden');return}
+ try{const health=await api('/api/health');if(health.api_contract!==10)throw new Error('This browser is showing an older SmartQuote server. Close the old command window and launch this V10 download using start_windows.bat.');const indicator=document.querySelector('.local-indicator');if(indicator)indicator.textContent='● V10 connected · '+location.host;if(health.auth_setup_required){$('loginError').textContent='No administrator account yet. In the application folder run: python manage_users.py bootstrap';$('loginGate').classList.remove('hidden');return}
  await launchWorkspace();}
- catch(e){$('loginGate').classList.remove('hidden');$('loginError').textContent=state.token?'Session expired. Please sign in again.':'Please sign in to continue.';sessionStorage.removeItem('smartquote_token');state.token=null}
+ catch(e){$('loginGate').classList.remove('hidden');$('loginError').textContent=e.message||'Cannot connect to SmartQuote. Check the application command window.';sessionStorage.removeItem('smartquote_token');state.token=null}
 }
 async function launchWorkspace(){
  const profile=await api('/api/auth/me');state.user=profile.user;
@@ -140,7 +161,7 @@ async function importFile(file){
     document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
    }catch(e){toast(e.message,true);button.disabled=false;button.textContent='Retry confirmed import →'}
   };
- }catch(e){toast(e.message,true);$('uploadedText').textContent='Import not completed';}
+ }catch(e){toast(e.message,true);$('uploadedText').textContent='Import not completed — '+e.message;}
  finally{z.classList.remove('busy');$('filePicker').value=''}
 }
 async function undoLastImport(){
