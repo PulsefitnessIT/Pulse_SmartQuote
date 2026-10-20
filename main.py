@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection_issues,BY_SKU,BY_KEY,DUPLICATE_CODES,CAT,CONFIG,sku_option,config_option,search_products,price_line,decorate_option,suggest_unknown,live_catalogue_option
 from quote_pdf import create_quote_pdf
 from agreement_import import read_agreement_pdf
+from invoice_import import read_invoice_pdf
 
 app=FastAPI(title='Pulse Fitness SmartQuote',version='0.10.0',docs_url=None,redoc_url=None)
 
@@ -254,6 +255,108 @@ def undo_last_asset_import(id:str,request:Request):
  record_event(id,actor(request)['username'],'ASSET_IMPORT_UNDONE',
               f"Removed {len(chosen)} rows from last import {latest['filename']} ({batch[:8]})")
  return {**result,'undone_rows':len(chosen),'filename':latest['filename']}
+
+def _invoice_payload(payload):
+    filename=str(payload.get('filename','')).strip()[:260]
+    if not filename.lower().endswith('.pdf'):
+        raise HTTPException(400,'Choose a Pulse Fitness invoice PDF.')
+    encoded=payload.get('content_base64','')
+    if not isinstance(encoded,str) or len(encoded)>48*1024*1024:
+        raise HTTPException(413,'Invoice too large. The PDF must be smaller than 35 MB.')
+    try:
+        raw=base64.b64decode(encoded,validate=True)
+        parsed=read_invoice_pdf(raw,filename)
+    except Exception as exc:
+        raise HTTPException(400,str(exc))
+    return parsed
+
+
+def _invoice_same_quote(q,parsed):
+    existing=str(q.get('customer','')).strip().casefold()
+    incoming=str(parsed['invoice'].get('customer','')).strip().casefold()
+    if q.get('assets') and existing and incoming and existing != incoming:
+        raise HTTPException(409,'This invoice belongs to a different customer. Start a new quotation to avoid mixing equipment.')
+    current_site=str(q.get('site','')).strip().casefold()
+    new_site=str(parsed['invoice'].get('site','')).strip().casefold()
+    if q.get('assets') and current_site and new_site and current_site!=new_site:
+        raise HTTPException(409,'This invoice is for a different site. Start a new quotation to keep asset locations separate.')
+
+
+@app.post('/api/quotes/{id}/invoice-preview')
+async def invoice_preview(id:str,request:Request):
+    """Extract only, never modify a quote. Sale prices are evidence, not RRPs."""
+    q=getq(id)
+    parsed=_invoice_payload(await request.json())
+    _invoice_same_quote(q,parsed)
+    already=any(f.get('content_sha256')==parsed['content_sha256'] for f in q['files'])
+    r=parsed['report']
+    return {'invoice':parsed['invoice'],'report':r,
+        'candidates':[{'code':a['code'],'name':a['name'],'qty':a['qty'],
+                       'serial_count':len(a['serials']),'page':a['page'],
+                       'product_group':a['product_group']} for a in parsed['assets']],
+        'excluded':[{'code':a['code'],'name':a['name'],'reason':a['reason'],
+                     'page':a['page']} for a in parsed['excluded']],
+        'unstructured_review':parsed['unstructured_review'],
+        'warnings':parsed['warnings'],
+        'content_sha256':parsed['content_sha256'],
+        'already_imported':already,
+        'capacity_ok':len(q['assets'])+len(parsed['assets'])<=2000,
+        'internal_only':True,'prices_are_historical_sale_values_not_rrp':True}
+
+
+@app.post('/api/quotes/{id}/invoice-import')
+async def invoice_import(id:str,request:Request):
+    """Staff confirmed import; append source-traceable equipment only."""
+    q=getq(id)
+    payload=await request.json()
+    parsed=_invoice_payload(payload)
+    _invoice_same_quote(q,parsed)
+    if payload.get('content_sha256')!=parsed['content_sha256']:
+        raise HTTPException(409,'Invoice changed since preview. Preview it again; nothing was imported.')
+    if any(f.get('content_sha256')==parsed['content_sha256'] for f in q['files']):
+        raise HTTPException(409,'This exact invoice was already imported into this quotation. No duplicates added.')
+    if len(q['assets'])+len(parsed['assets'])>2000:
+        raise HTTPException(400,'Invoice would exceed 2,000 source rows; use another quotation.')
+    with _lock:
+        c=conn()
+        try:
+            issued=c.execute('SELECT 1 FROM quote_versions WHERE quote_id=? LIMIT 1',(id,)).fetchone()
+        finally:
+            c.close()
+    if issued:
+        raise HTTPException(409,'This quotation already has saved PDF versions. Create a new revision before importing equipment.')
+    invoice=parsed['invoice']
+    batch_id=uuid.uuid4().hex
+    warning_start=len(q['warnings'])
+    for source in parsed['assets']:
+        asset=match_asset({**source,'id':'invoice_'+uuid.uuid4().hex[:14],
+                           'import_batch_id':batch_id})
+        q['assets'].append(asset)
+    for k in ('customer','site','billing_address','delivery_address','account_ref','customer_ref'):
+        if not str(q.get(k,'')).strip() and str(invoice.get(k,'')).strip():
+            q[k]=invoice[k]
+    q['warnings']+=parsed['warnings']
+    if parsed['unstructured_review']:
+        q['warnings'].append(f'Invoice {invoice["invoice_no"]}: {len(parsed["unstructured_review"])} unstructured descriptions could represent additional equipment or catalogue notes. Inspect the original invoice pages.')
+    q['files'].append({'filename':str(payload['filename'])[:260],
+       'type':'historical-sales-invoice','content_sha256':parsed['content_sha256'],
+       'invoice_no':invoice['invoice_no'],'invoice_date':invoice['date'],
+       'imported':len(parsed['assets']),'batch_id':batch_id,
+       'warnings_start':warning_start,
+       'sheets':[{'sheet':f'Invoice {invoice["invoice_no"]}',
+                  'rows':parsed['report']['source_rows'],'added':len(parsed['assets'])}],
+       'at':datetime.datetime.now().isoformat(timespec='seconds')})
+    q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
+    persist(q)
+    record_event(id,actor(request)['username'],'SALES_INVOICE_IMPORT',
+        f'Invoice {invoice["invoice_no"]}: {len(parsed["assets"])} lines, {parsed["report"]["equipment_units"]} units; historical sale values excluded from pricing')
+    return {**public(q),
+            'import_report':{**parsed['report'], 'invoice_no':invoice['invoice_no'],
+                             'warnings':parsed['warnings'],
+                             'excluded':len(parsed['excluded']),
+                             'unstructured_review':len(parsed['unstructured_review']),
+                             'added':len(parsed['assets'])}}
+
 
 @app.post('/api/quotes/{id}/agreement-import')
 async def import_agreement(id:str,request:Request):
