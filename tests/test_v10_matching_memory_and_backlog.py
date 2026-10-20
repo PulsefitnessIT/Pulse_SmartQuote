@@ -14,6 +14,7 @@ import engine
 import main
 import matching_memory as memory
 from catalogue_gaps import analyse
+from asset_intelligence import grouped_assets
 from catalogue_readiness import evaluate
 
 
@@ -135,6 +136,35 @@ class MatchingMemoryTests(unittest.TestCase):
         self.assertEqual(result['counts']['total_units'],165)
         self.assertGreater(result['counts']['unpriced_units'],0)
         self.assertEqual(result['counts']['priced_units']+result['counts']['unpriced_units'],165)
+
+    def test_anonymised_165_row_complex_register_regression(self):
+        """CI-safe regression for an M Club shaped file: no private serials/site."""
+        buff=io.StringIO(newline='');w=csv.writer(buff)
+        w.writerow(['Name','Make','Model','Description','Serial Number','Vendor comments'])
+        idx=0
+        def add(qty,make,model,description,prefix='SER'):
+            nonlocal idx
+            for _ in range(qty):
+                idx+=1
+                # Synthetic asset tags and serials, not real customer identifiers.
+                w.writerow(['Example Site',make,model,
+                            f'PF{900000+idx} - {description}',
+                            f'{prefix}-SIMULATED-{idx:04d}',f'Dummy ref {idx}'])
+        add(21,'224B-AAB','Group Cycle','Group Cycle','224B')
+        add(14,'0','0','Run - Low Impact Elevation Treadmill','260G')
+        add(7,'0','0','Elliptical Cross-Trainer','280G')
+        add(6,'0','0','Upright Cycle','240G')
+        # 68 distinct equipment types, 49 with two machines and 19 singletons.
+        for ix in range(68):
+            add(2 if ix<49 else 1,'0','0',f'Synthetic Specialised Equipment Type {ix+1:03d}')
+        parsed=engine.ingest('Synthetic_Mixed_CRM_Export.csv',buff.getvalue().encode())
+        self.assertEqual(len(parsed['assets']),165)
+        groups=grouped_assets(parsed['assets'])
+        self.assertEqual(len(groups),72)
+        self.assertEqual(sum(g['qty'] for g in groups),165)
+        self.assertEqual(max(g['qty'] for g in groups),21)
+        self.assertEqual(len({a['serial'] for a in parsed['assets']}),165)
+        self.assertTrue(all(a['source_raw_columns'] for a in parsed['assets']))
 
     def test_metadata_only_source_does_not_meet_year_requirement(self):
         folder=Path(engine.ROOT)
