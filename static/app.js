@@ -172,7 +172,108 @@ function quickHelp(){
  $('modal').classList.remove('hidden');$('closeHelp').onclick=()=>$('modal').classList.add('hidden');
 }
 
-async function importFile(file){
+
+// All document types share one uploader. A file is only removed after a
+// successful, confirmed import; classification never modifies stored quote data.
+let stagedUploads=[];
+let nextStagedUploadId=1;
+function uploadTypesFor(file){
+ const name=String(file.name||'').toLowerCase();
+ if(name.endsWith('.pdf'))return [['invoice','Sales invoice (PDF)'],['agreement','Previous maintenance agreement (PDF)']];
+ if(name.endsWith('.xls'))return [['calculations','Previous calculations (Excel)']];
+ if(name.endsWith('.xlsx'))return [['assets','Equipment / asset list'],['calculations','Previous calculations (Excel)']];
+ if(/\.(csv|tsv|txt)$/.test(name))return [['assets','Equipment / asset list']];
+ return [];
+}
+function suggestedUploadType(file){
+ const types=uploadTypesFor(file);
+ if(!types.length)return '';
+ if(types[0][0]==='invoice'){
+  if(/invoice|sales.?bill/i.test(file.name))return 'invoice';
+  if(/agreement|maintenance.?contract|renewal/i.test(file.name))return 'agreement';
+  return ''; // PDFs without meaningful names need a staff selection.
+ }
+ if(types.some(x=>x[0]==='calculations')&&/calculat|old.?calc|historic.?pric|quote.?calc/i.test(file.name))return 'calculations';
+ return types[0][0];
+}
+function removeStagedUpload(id){
+ stagedUploads=stagedUploads.filter(item=>item.id!==id);
+ if(invoicePending && invoicePending.queueEntryIds && invoicePending.queueEntryIds.includes(id))invoiceReviewClear();
+ renderStagedUploads();
+}
+function stageUploadFiles(inputFiles){
+ const incoming=Array.from(inputFiles||[]);
+ let added=0, skipped=0;
+ for(const file of incoming){
+  if(!uploadTypesFor(file).length){skipped++;continue;}
+  if(stagedUploads.some(item=>item.file.name===file.name && item.file.size===file.size && item.file.lastModified===file.lastModified)){
+   skipped++;continue;
+  }
+  stagedUploads.push({id:nextStagedUploadId++,file,kind:suggestedUploadType(file)});
+  added++;
+ }
+ if(skipped)toast(skipped+' unsupported or already queued file(s) were skipped.',true);
+ if(added)renderStagedUploads();
+}
+function renderStagedUploads(){
+ const queue=$('uploadQueue'),items=$('uploadQueueItems');
+ queue.classList.toggle('hidden',!stagedUploads.length);
+ items.replaceChildren();
+ $('uploadQueueCount').textContent=stagedUploads.length+' file'+(stagedUploads.length===1?'':'s');
+ for(const entry of stagedUploads){
+  const row=document.createElement('div');row.className='upload-queue-row';
+  const info=document.createElement('div');info.className='upload-queue-file';
+  const name=document.createElement('strong');name.textContent=entry.file.name;name.title=entry.file.name;
+  const size=document.createElement('small');size.textContent=(entry.file.size/1024/1024).toFixed(2)+' MB';
+  info.append(name,size);
+  const label=document.createElement('label');label.className='upload-queue-type';
+  const caption=document.createElement('span');caption.textContent='Document type';
+  const select=document.createElement('select');select.setAttribute('aria-label','Document type for '+entry.file.name);
+  const choices=uploadTypesFor(entry.file);
+  if(!entry.kind){const option=document.createElement('option');option.value='';option.textContent='Choose a document type';select.append(option);}
+  for(const [value,title] of choices){const option=document.createElement('option');option.value=value;option.textContent=title;select.append(option);}
+  select.value=entry.kind;
+  select.onchange=()=>{
+   entry.kind=select.value;
+   if(invoicePending && invoicePending.queueEntryIds && invoicePending.queueEntryIds.includes(entry.id))invoiceReviewClear();
+   renderStagedUploads();
+  };
+  label.append(caption,select);
+  const actions=document.createElement('div');actions.className='upload-queue-row-actions';
+  if(entry.kind!=='invoice'){
+   const review=document.createElement('button');review.type='button';review.className='secondary-btn';
+   review.textContent='Review';review.disabled=!entry.kind;
+   review.onclick=()=>reviewStagedUpload(entry.id);actions.append(review);
+  }else{
+   const note=document.createElement('small');note.textContent='Included in invoice review';actions.append(note);
+  }
+  const remove=document.createElement('button');remove.type='button';remove.className='upload-queue-remove';
+  remove.textContent='Remove';remove.setAttribute('aria-label','Remove '+entry.file.name+' from queue');
+  remove.onclick=()=>removeStagedUpload(entry.id);actions.append(remove);
+  row.append(info,label,actions);items.append(row);
+ }
+ const invoices=stagedUploads.filter(e=>e.kind==='invoice');
+ const batch=$('reviewInvoiceBatch');batch.classList.toggle('hidden',!invoices.length);
+ if(invoices.length)batch.textContent='Review '+invoices.length+' sales invoice'+(invoices.length===1?'':'s')+' →';
+ batch.disabled=invoices.length>10;
+ if(invoices.length>10)batch.title='Import invoices in batches of up to 10. Remove some invoices first.';
+}
+function reviewStagedUpload(id){
+ const entry=stagedUploads.find(x=>x.id===id);
+ if(!entry || !entry.kind){toast('Choose the document type before reviewing.',true);return;}
+ if(entry.kind==='invoice'){reviewStagedInvoices();return;}
+ if(entry.kind==='agreement')return importAgreement(entry.file,entry.id);
+ if(entry.kind==='calculations')return importOldCalcs(entry.file,entry.id);
+ return importFile(entry.file,entry.id);
+}
+function reviewStagedInvoices(){
+ const invoices=stagedUploads.filter(x=>x.kind==='invoice');
+ if(!invoices.length)return;
+ if(invoices.length>10){toast('Review up to 10 invoices together. Remove extras from the queue for the next batch.',true);return;}
+ previewInvoices(invoices.map(x=>x.file),invoices.map(x=>x.id));
+}
+
+async function importFile(file,entryId=null){
  if(!file)return;
  const z=$('dropzone');z.classList.add('busy');$('uploadedText').textContent='Previewing '+file.name+'…';
  try{
@@ -198,7 +299,7 @@ async function importFile(file){
    const button=$('confirmImport');button.disabled=true;button.textContent='Importing assets…';
    try{
     const d=await api('/api/quotes/'+state.quote.id+'/import',{method:'POST',body:JSON.stringify({...request,content_sha256:data.content_sha256})});
-    apply(d);state.filter='issues';$('modal').classList.add('hidden');render();
+    apply(d);state.filter='issues';$('modal').classList.add('hidden');if(entryId!==null)removeStagedUpload(entryId);render();
     toast(`${d.import_report.added} source assets added as ${d.import_report.grouped_lines} groups. Review equipment needing attention.`);
     document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
    }catch(e){toast(e.message,true);button.disabled=false;button.textContent='Retry confirmed import →'}
@@ -580,7 +681,7 @@ async function addEquipment(data,fromCatalogue){
 }
 let invoicePending=null;
 function invoiceReviewClear(){invoicePending=null;const panel=$('invoicePreview');panel.innerHTML='';panel.classList.add('hidden');}
-async function previewInvoices(inputFiles){
+async function previewInvoices(inputFiles,queueEntryIds=[]){
  const files=[...(inputFiles||[])];if(!files.length)return;
  try{
   invoiceReviewClear();
@@ -595,7 +696,7 @@ async function previewInvoices(inputFiles){
   }
   const payload={files:encoded};
   const parsed=await api('/api/quotes/'+state.quote.id+'/invoice-batch-preview',{method:'POST',body:JSON.stringify(payload)});
-  invoicePending={payload,parsed};
+  invoicePending={payload,parsed,queueEntryIds};
   const cards=parsed.invoices.map(inv=>{
     const tag=inv.already_imported?'Already included — skipped':`${inv.added_lines} lines · ${inv.added_units} machines`;
     const examples=(inv.examples||[]).map(x=>`${esc(x.code)} (${x.qty})`).join(' · ');
@@ -611,39 +712,39 @@ async function previewInvoices(inputFiles){
   $('invoiceConfirm').onclick=confirmInvoiceImport;
   $('invoiceCancel').onclick=invoiceReviewClear;
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
- }catch(e){invoiceReviewClear();toast(e.message,true)}finally{$('invoicePicker').value='';}
+ }catch(e){invoiceReviewClear();toast(e.message,true)}
 }
 async function confirmInvoiceImport(){if(!invoicePending)return;
- const {payload,parsed}=invoicePending;const btn=$('invoiceConfirm');
+ const {payload,parsed,queueEntryIds}=invoicePending;const btn=$('invoiceConfirm');
  if(btn){btn.disabled=true;btn.textContent='Adding equipment to draft…';}
  try{
   const result=await api('/api/quotes/'+state.quote.id+'/invoice-batch-import',{method:'POST',body:JSON.stringify({...payload,content_sha256:parsed.content_sha256})});
-  invoiceReviewClear();apply(result);state.filter='all';render();
+  invoiceReviewClear();apply(result);state.filter='all';if(queueEntryIds?.length){stagedUploads=stagedUploads.filter(e=>!queueEntryIds.includes(e.id));renderStagedUploads();}render();
   toast(`Added ${result.import_report.equipment_units} machines from ${result.import_report.invoice_count} invoices. ${result.import_report.duplicate_serials_skipped} duplicate serials skipped.`);
   document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
  }catch(e){if(btn){btn.disabled=false;btn.textContent='Retry adding invoices';}toast(e.message,true)}
 }
-async function importAgreement(file){if(!file)return;
+async function importAgreement(file,entryId=null){if(!file)return;
  try{if(!file.name.toLowerCase().endsWith('.pdf'))throw new Error('Please select a maintenance agreement PDF.');
  if(file.size>35*1024*1024)throw new Error('Agreement must be smaller than 35 MB.');
  if(state.quote.assets.length&&!confirm('Replace the current equipment list with this agreement? Cancel to keep your existing lines.'))return;
  const bytes=new Uint8Array(await file.arrayBuffer());let content='';for(let i=0;i<bytes.length;i+=0x8000)content+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
  $('uploadedText').textContent='Reading agreement '+file.name+'…';
  const d=await api('/api/quotes/'+state.quote.id+'/agreement-import',{method:'POST',body:JSON.stringify({filename:file.name,content_base64:btoa(content),mode:'replace'})});
- apply(d);state.filter='all';render();toast(`Imported ${d.import_report.lines} lines (${d.import_report.units} units) from the previous agreement. Check unmatched legacy products and renewal terms.`);
+ apply(d);state.filter='all';if(entryId!==null)removeStagedUpload(entryId);render();toast(`Imported ${d.import_report.lines} lines (${d.import_report.units} units) from the previous agreement. Check unmatched legacy products and renewal terms.`);
  document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
- }catch(e){toast(e.message,true)}finally{$('agreementPicker').value='';render()}}
-async function importOldCalcs(file){if(!file)return;
+ }catch(e){toast(e.message,true)}finally{render()}}
+async function importOldCalcs(file,entryId=null){if(!file)return;
  try{
   if(!/\.xlsx?$/i.test(file.name))throw new Error('Please select a historical .xls or .xlsx calculations workbook.');
   if(file.size>30*1024*1024)throw new Error('Old calculations file must be smaller than 30 MB.');
   const bytes=new Uint8Array(await file.arrayBuffer());let content='';for(let i=0;i<bytes.length;i+=0x8000)content+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
   $('uploadedText').textContent='Reading previous calculations '+file.name+'…';
   const d=await api('/api/quotes/'+state.quote.id+'/old-calcs-import',{method:'POST',body:JSON.stringify({filename:file.name,content_base64:btoa(content)})});
-  apply(d);state.filter='all';render();
+  apply(d);state.filter='all';if(entryId!==null)removeStagedUpload(entryId);render();
   toast(`Imported ${d.import_report.source_lines} historic priced lines; matched ${d.import_report.matched}, added ${d.import_report.added}. ${d.import_report.unmatched_codes.length} need reconciliation.`);
   document.querySelector('.assets-panel').scrollIntoView({behavior:'smooth',block:'start'});
- }catch(e){toast(e.message,true)}finally{$('oldCalcsPicker').value='';render()}
+ }catch(e){toast(e.message,true)}finally{render()}
 }
 async function loadUsers(){try{
  const d=await api('/api/users');$('usersList').innerHTML=d.users.map(u=>`<div class="users-row"><div><b>${esc(u.username)}</b><span class="user-role">${esc(u.role)}</span> · ${u.active?'Active':'Inactive'}</div><div><button class="secondary-btn" data-reset="${esc(u.username)}">Reset password</button><button class="secondary-btn" data-toggle="${esc(u.username)}" data-active="${u.active}">${u.active?'Deactivate':'Activate'}</button></div></div>`).join('');
@@ -664,7 +765,7 @@ function bind(){
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
  $('staffHelp').onclick=quickHelp;$('quoteFind').addEventListener('input',()=>{clearTimeout(window.quoteFindTimer);window.quoteFindTimer=setTimeout(loadRegister,260)});$('quoteStatusFilter').onchange=loadRegister;
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
- $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseInvoice').onclick=()=>$('invoicePicker').click();$('invoicePicker').onchange=e=>previewInvoices(e.target.files);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
+ $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>{stageUploadFiles(e.target.files);e.target.value='';};$('browseButton').onclick=()=>$('filePicker').click();$('reviewInvoiceBatch').onclick=reviewStagedInvoices;$('clearUploadQueue').onclick=()=>{stagedUploads=[];invoiceReviewClear();renderStagedUploads();};$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('rrp2026Query').oninput=()=>{rrp2026Offset=0;clearTimeout(rrp2026Timer);rrp2026Timer=setTimeout(searchRrp2026,250)};
  $('rrp2026Filter').onchange=()=>{rrp2026Offset=0;searchRrp2026()};
@@ -674,7 +775,7 @@ function bind(){
  $('hybridPropose').onclick=proposeHybridRrp;
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;
- const z=$('dropzone');z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag')});z.addEventListener('dragleave',()=>z.classList.remove('drag'));z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag');importFile(e.dataTransfer.files[0])});
+ const z=$('dropzone');z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag')});z.addEventListener('dragleave',()=>z.classList.remove('drag'));z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag');stageUploadFiles(e.dataTransfer.files)});
 }
 
 // V4 master catalogue controls: operator-entered audit trail. This does not

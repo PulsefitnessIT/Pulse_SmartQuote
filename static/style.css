@@ -228,3 +228,27 @@ button:disabled{cursor:not-allowed;opacity:.6}
 .invoice-batch-card>span,.invoice-batch-card small{font-size:.86rem;color:#4c6473}
 .invoice-batch-card b{color:#126889}
 .invoice-batch-card summary{cursor:pointer;font-weight:650}
+
+
+/* One shared intake for assets, agreements, old calculations and invoice batches. */
+.unified-dropzone{min-height:174px;padding:22px 16px}
+.unified-dropzone:focus-within{border-color:#159dd0}
+.upload-queue{margin-top:15px;border:1px solid #d4e4ed;border-radius:11px;background:#f8fbfd;padding:15px}
+.upload-queue-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px}
+.upload-queue-heading strong{font-size:14px;color:#1b3e54}
+.upload-queue-heading small{display:block;color:#687d89;margin-top:3px;font-size:11px}
+#uploadQueueCount{font-size:11px;color:#426a7a;white-space:nowrap}
+.upload-queue-items{display:grid;gap:8px}
+.upload-queue-row{display:grid;grid-template-columns:minmax(140px,1.5fr) minmax(170px,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid #dfe9ed;border-radius:9px;padding:10px 12px}
+.upload-queue-file{min-width:0}
+.upload-queue-file strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#1b3e54}
+.upload-queue-file small{display:block;color:#687e8b;font-size:10px;margin-top:3px}
+.upload-queue-type{display:flex;flex-direction:column;gap:5px;font-size:10px;font-weight:750;color:#557381;min-width:0}
+.upload-queue-type select{font-size:12px;padding:8px 11px;max-width:100%}
+.upload-queue-row-actions{display:flex;gap:9px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.upload-queue-row-actions .secondary-btn{padding:8px 13px;font-size:12px}
+.upload-queue-row-actions small{font-size:10px;color:#69818b}
+.upload-queue-remove{color:#6e7481;background:transparent;border:none;padding:7px;font-size:11px;cursor:pointer;text-decoration:underline}
+.upload-queue-actions{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}
+.upload-queue-actions .primary-btn,.upload-queue-actions .secondary-btn{font-size:12px}
+@media(max-width:750px){.upload-queue-row{grid-template-columns:minmax(0,1fr);gap:9px}.upload-queue-row-actions{justify-content:flex-start}.upload-queue-heading{align-items:flex-start}}
