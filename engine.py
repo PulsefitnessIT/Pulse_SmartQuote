@@ -9,6 +9,7 @@ from collections import Counter
 from functools import lru_cache
 from renewal_pricing import family_reference
 from asset_intelligence import normalize_asset, grouped_assets
+from smart_candidates import family_code, suggest as suggest_review_candidates
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -244,7 +245,12 @@ def ingest(name:str,content:bytes):
     site=(site_status.removeprefix('Relocated to ').strip() if re.match(r'(?i)^relocated to\s+',site_status) else
           location if site_status.lower() in ('n/a','na','-') or 'warranty' in site_status.lower() or 'agreement' in site_status.lower() else site_status)
    else:site=location or site_status
-   assets.append(normalize_asset({'id':f'a{len(assets)+1:04d}','source_sheet':sheet,'source_row':r.get('_rownum',ix),'code':val.get('code',''), 'model':val.get('code','') or val.get('model',''), 'name':val.get('name',''), 'make':val.get('make',''), 'console':val.get('console',''), 'serial':val.get('serial',''),'site':site, 'source_location':location, 'site_status':site_status,'source_note':val.get('note',''), 'qty':quantity,'original_qty':rawqty,'qty_issue':quantity_issue,'install_date':val.get('install_date',''),
+   # Keep every non-empty original source cell, including columns we do not
+   # know how to interpret. Column indexes preserve duplicate headings.
+   original_columns=[{'column_index':c,'header':celltext(header.get(c,'')),
+                      'value':celltext(v)} for c,v in r.items()
+                     if isinstance(c,int) and not blank(v)]
+   assets.append(normalize_asset({'source_raw_columns':original_columns,'id':f'a{len(assets)+1:04d}','source_sheet':sheet,'source_row':r.get('_rownum',ix),'code':val.get('code',''), 'model':val.get('code','') or val.get('model',''), 'name':val.get('name',''), 'make':val.get('make',''), 'console':val.get('console',''), 'serial':val.get('serial',''),'site':site, 'source_location':location, 'site_status':site_status,'source_note':val.get('note',''), 'qty':quantity,'original_qty':rawqty,'qty_issue':quantity_issue,'install_date':val.get('install_date',''),
                     'correct_serial':val.get('correct_serial','')}))
   meta.append({'sheet':sheet,'rows':len(records),'added':len(assets)-start_added,'detected':True,'columns':list(h)})
  if not assets:raise ValueError('No usable equipment rows were detected. Check the spreadsheet headings and select the correct sheet.')
@@ -404,6 +410,47 @@ def suggest_unknown(asset,limit=5):
     return [{**o,'reason':'Suggested from text - verify exact machine and console before selection',
        'recommendation':'Possible match, not confirmed'} for o in opts]
 
+def review_candidates(asset,limit=10):
+ """On-demand modern catalogue evidence for an ambiguous asset."""
+ limit=max(1,min(int(limit),20))
+ report=suggest_review_candidates(asset,BY_MODEL,ALL_SKUS,CAT,live_catalogue_option,limit)
+ # When a historical model is no longer in the current RRP catalogue,
+ # show the old service configurations and *separately labelled* newer
+ # description matches. Neither is an approved equivalence.
+ if not report['candidates']:
+  family=report.get('model_family') or upper(asset.get('model'))
+  for config in BY_MODEL.get(family,[])[:6]:
+   option=config_option(config,'Historical service configuration - pricing on hold')
+   report['candidates'].append({'sku':option.get('sku',''),
+        'service_key':option.get('service_key',''), 'name':option.get('name',''),
+        'model':option.get('model',''), 'console':option.get('console',''),
+        'console_display':option.get('console_display',''), 'rrp':option.get('rrp'),
+        'price_origin':option.get('price_origin',''), 'eligible':option.get('eligible',''),
+        'duplicate_sku':option.get('duplicate_sku',False),
+        'reason':'Historic model family only - source RRP is missing or unapproved',
+        'review_flags':['Do not treat this as an approved current product equivalence',
+                        'Commercial RRP and maintenance coverage must be verified'],
+        'operator_confirmation_required':True})
+  modern=search_products(neat(asset.get('name')),limit=5)
+  seen={(x['sku'],x['service_key']) for x in report['candidates']}
+  for option in modern:
+   identity=(option.get('sku',''),option.get('service_key',''))
+   if identity in seen:continue
+   seen.add(identity)
+   report['candidates'].append({'sku':identity[0], 'service_key':identity[1],
+      'name':option.get('name',''), 'model':option.get('model',''),
+      'console':option.get('console',''), 'console_display':option.get('console_display',''),
+      'rrp':option.get('rrp'), 'duplicate_sku':option.get('duplicate_sku',False),
+      'price_origin':option.get('price_origin',''), 'eligible':option.get('eligible',''),
+      'reason':'Different/current model suggested by description - NOT a verified replacement',
+      'review_flags':['Physical machine, supported replacement and console must be confirmed'],
+      'operator_confirmation_required':True})
+  report['candidates']=report['candidates'][:limit]
+  report['candidate_count_shown']=len(report['candidates'])
+ report['historical']=historical_identity(asset.get('code'),asset.get('model'))
+ return report
+
+
 def score_name(name,p):
  return difflib.SequenceMatcher(None,descslug(name),descslug(p['name'])).ratio()
 
@@ -432,13 +479,18 @@ def match_asset(a):
    m=re.search(r'\b([0-9]{3}[A-Z](?:-[A-Z])?)\b',desc,re.I)
    if m:model=m.group(1).upper()
   opts=BY_MODEL.get(model,[]) if model else []
+  review_family,suffixed=family_code(model)
+  if not opts and suffixed and review_family:
+   opts=BY_MODEL.get(review_family,[])
+   if opts:
+    out['issues'].append(f'Source variant {model} is not an exact current model. Review {review_family} candidates; do not automatically assume equivalence.')
   if opts:
    if console:
     direct=[c for c in opts if upper(c['console'])==console or upper(c['series'])==console]
-    if len(direct)==1:out['selected']=config_option(direct[0],'Model + console');out['match_type']='Model + console';out['match_confidence']=83
+    if len(direct)==1 and not suffixed:out['selected']=config_option(direct[0],'Model + console');out['match_type']='Model + console';out['match_confidence']=83
    # A genuinely unique legacy model can be mapped safely when its name also agrees,
    # but never when the prior agreement mentions a different/unverified console.
-   if not out['selected'] and len(opts)==1 and not console and desc and (score_name(desc,opts[0])>=.65 or (model and descslug(desc)==descslug(model) and len([p for p in CAT if upper(p.get('model'))==model])==1)):
+   if not out['selected'] and not suffixed and len(opts)==1 and not console and desc and (score_name(desc,opts[0])>=.65 or (model and descslug(desc)==descslug(model) and len([p for p in CAT if upper(p.get('model'))==model])==1)):
     out['selected']=config_option(opts[0],'Unique model and description match')
     out['match_type']='Unique model configuration';out['match_confidence']=88
    if not out['selected']:

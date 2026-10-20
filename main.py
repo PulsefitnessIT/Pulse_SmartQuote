@@ -1,7 +1,7 @@
 """Pulse SmartQuote local pilot. NOT hardened for the public internet.
 Run: python -m uvicorn main:app --host 127.0.0.1 --port 8765
 """
-import base64,json,os,sqlite3,threading,uuid,datetime,re,hashlib
+import base64,json,os,sqlite3,threading,uuid,datetime,re,hashlib,csv,io
 from io import BytesIO
 import engine as eng
 import catalogue_admin as admin
@@ -265,6 +265,94 @@ async def save(id:str,request:Request):
  except:raise HTTPException(400,'Check discount (0-60%), term (1-5 years), and visits (0-12).')
  q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
  result=public(persist(q));record_event(id,actor(request)['username'],'QUOTE_SETTINGS_UPDATED');return result
+@app.get('/api/quotes/{id}/match-review/{aid}')
+def match_review(id:str,aid:str):
+    """Price-source candidates and source lineage; no automatic resolution."""
+    q=getq(id)
+    a=next((asset for asset in q['assets'] if asset['id']==aid),None)
+    if a is None:raise HTTPException(404,'Equipment row not found')
+    report=eng.review_candidates(a,limit=12)
+    # A displayed group is a view, never a new physical source record.
+    pmap={line['id']:line['price'] for line in calc_quote(q)['lines']}
+    group=next((g for g in grouped_assets(q['assets'],pmap) if aid in g['ids']),None)
+    report['group']={'count':len(group['ids']) if group else 1,
+                     'quantity':group['qty'] if group else a.get('qty',1),
+                     'ids':group['ids'] if group else [aid],
+                     'source_rows':group['source_rows'] if group else [a.get('source_row')],
+                     'serials':group['serials'] if group else [a.get('serial','')]}
+    report['already_priced']=pmap.get(aid) is not None
+    return report
+
+
+def _safe_csv(value):
+    """Disable spreadsheet formula execution when a customer name is opened in Excel."""
+    text=str(value if value is not None else '').replace('\r',' ').replace('\n',' ')
+    return "'"+text if text.lstrip().startswith(('=','+','-','@','\t')) else text
+
+
+@app.get('/api/quotes/{id}/matching-report.csv')
+def matching_report(id:str):
+    """One review line per display group, retaining all individual source rows."""
+    q=getq(id);calc=calc_quote(q)
+    prices={line['id']:line['price'] for line in calc['lines']}
+    groups=grouped_assets(q['assets'],prices)
+    columns=['Site','Source description','SKU in quote','Model','Console','Group rows',
+             'Machine quantity','Current RRP','Annual group total','Pricing basis',
+             'Matching status','Source row numbers','Original asset tags','Serial numbers',
+             'Review action']
+    stream=io.StringIO(newline='');writer=csv.writer(stream);writer.writerow(columns)
+    for g in groups:
+        a=g['representative'];sel=a.get('selected') or {};price=g.get('price')
+        action=('Excluded — '+str(a.get('exclusion_reason') or 'confirm reason') if a.get('excluded') else
+            'Confirm SKU and console against source product' if price and (sel.get('price_origin')=='calculated-estimate' or sel.get('approved') not in ('Approved','Authorised')) else
+            'Review current RRP and console / select an exact equipment SKU' if not price else
+            'Check pricing source before customer issue')
+        values=[a.get('site',''),a.get('name',''),sel.get('sku') or a.get('code',''),a.get('model',''),
+                a.get('console') or sel.get('console',''),len(g['ids']),g['qty'],
+                sel.get('rrp') or '',price.get('annual') if price else '',
+                price.get('basis') if price else 'Not priced',a.get('match_type',''),
+                ', '.join(str(x) for x in g['source_rows'] if x is not None),
+                ', '.join(x.get('asset_tag','') for x in g['assets'] if x.get('asset_tag')),
+                ', '.join(g['serials']),action]
+        writer.writerow([_safe_csv(x) for x in values])
+    return Response(content='\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition':f'attachment; filename="SmartQuote_{id[:16]}_Matching_Review.csv"'})
+
+@app.get('/api/quotes/{id}/asset-register.csv')
+def original_asset_register(id:str):
+    """Lossless original import view: one physical source row per CSV line."""
+    q=getq(id)
+    raw_keys=set()
+    for a in q['assets']:
+        for cell in a.get('source_raw_columns',[]):
+            if isinstance(cell,dict) and isinstance(cell.get('column_index'),int):
+                raw_keys.add((cell['column_index'],str(cell.get('header') or '')))
+    keys=sorted(raw_keys)
+    prefix=['Source file/sheet','Excel/CSV source row','Site / customer','Quote asset ID',
+            'Original asset tag','Original description','Imported SKU','Imported model',
+            'Imported make','Original serial','Corrected serial','Active serial',
+            'Installed date','Quantity','Matched SKU','Review status']
+    cols=[f'Original column {n+1} - {header or "no heading"}' for n,header in keys]
+    stream=io.StringIO(newline='');writer=csv.writer(stream)
+    writer.writerow(prefix+cols)
+    for a in q['assets']:
+        sheet=a.get('source_sheet','')
+        bycol={(cell['column_index'],str(cell.get('header') or '')):cell.get('value','')
+               for cell in a.get('source_raw_columns',[]) if isinstance(cell,dict)
+               and isinstance(cell.get('column_index'),int)}
+        original=a.get('source_cells') or {}
+        current=a.get('selected') or {}
+        prefix_values=[sheet,a.get('source_row',''),a.get('site',''),a.get('id',''),
+                       a.get('asset_tag',''),a.get('source_description',a.get('name','')),
+                       original.get('code',''),original.get('model',''),original.get('make',''),
+                       a.get('original_serial') or original.get('serial',''),
+                       original.get('correct_serial',''),a.get('serial',''),
+                       original.get('install_date',''),a.get('qty',1),current.get('sku',''),
+                       a.get('match_type','')]
+        writer.writerow([_safe_csv(x) for x in prefix_values + [bycol.get(k,'') for k in keys]])
+    return Response(content='\ufeff'+stream.getvalue(),media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition':f'attachment; filename="SmartQuote_{id[:16]}_Original_Asset_Register.csv"'})
+
 @app.post('/api/quotes/{id}/resolve')
 async def resolve(id:str,request:Request):
  q=getq(id);data=await request.json();aid=data.get('asset_id')

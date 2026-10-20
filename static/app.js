@@ -69,6 +69,7 @@ function issueAssets(){const cost=Object.fromEntries(state.summary.lines.map(x=>
 function reviewNext(afterId=null){const list=issueAssets();let next=list[0];if(afterId){const all=state.quote.assets,ix=all.findIndex(a=>a.id===afterId);next=all.slice(ix+1).concat(all.slice(0,ix+1)).find(a=>list.some(t=>t.id===a.id));}if(next)review(next.id);else{$('modal').classList.add('hidden');toast('All included equipment is priced. Finish the customer details and generate the quote.');}}
 function review(id){
  const a=state.quote.assets.find(x=>x.id===id);if(!a)return;
+ state.reviewingId=id;
  $('modalTitle').textContent=`Edit equipment line · ${a.source_sheet||'Manual'}`;
  const idx=state.quote.assets.findIndex(x=>x.id===id);
  const problems=a.issues||[];
@@ -82,6 +83,7 @@ function review(id){
   <label>Customer-facing quotation description<input id="modalDisplay" value="${esc(a.display_name||'')}" placeholder="Leave blank to use the catalogue's official description"><span class="field-aside">Only affects the PDF description. It does not change the SKU or underlying price.</span></label>
   <button class="secondary-btn" type="button" id="saveAndMatch" style="margin:12px 0">Save these details & re-check catalogue</button>
   <div class="editor-section">2 · Suggested machines and catalogue search</div><p class="editor-hint">Suggestions use the imported name or model, not a verified match. Check the full product description and correct console before selecting. Search by description, make, model or item code.</p>
+  <div id="smartReviewSuggestions" class="smart-review"><p class="editor-hint">Looking up source catalogue and historical evidence…</p></div>
   <div class="match-choices-scroll">${choices||'<p class="editor-hint">No automatic match was found. Search the catalogue, or add an evidenced manual annual unit rate below.</p>'}</div>
   <div class="searchline"><input id="modalSearch" placeholder="e.g. rower, Concept2, storage rack, 260G"><button id="modalFind" class="secondary-btn">Find machine</button></div><div id="modalResults"></div>
   <div class="editor-section">3 · Exceptional handling (only when needed)</div><div class="manual-box"><label class="edit-check"><input type="checkbox" id="enableManual" ${a.manual_annual_unit!=null?'checked':''}> Use an externally verified manual annual maintenance rate</label><div id="manualFields" class="${a.manual_annual_unit==null?'hidden':''}"><div class="form-grid"><label>Annual unit price (ex VAT)<input id="modalManualRate" type="number" step="0.01" min="0.01" value="${esc(a.manual_annual_unit??'')}" placeholder="£ per unit per year"></label><label>Manual price source/reference<input id="modalManualSource" value="${esc(a.manual_price_source||'')}" placeholder="Approved price list / manager email, date"></label></div><p class="editor-hint"><b>Commercial control:</b> manual rates are not invented or auto-approved. Enter a genuine authorised source and include a source for the manual price. This replaces automated pricing for this line. The quotation discount is applied to this manual base rate. Review the final discounted amount.</p></div></div>
@@ -96,6 +98,44 @@ function review(id){
  $('enableManual').onchange=e=>$('manualFields').classList.toggle('hidden',!e.target.checked);
  $('modalExclude').onchange=e=>$('excludeFields').classList.toggle('hidden',!e.target.checked);
  $('modal').classList.remove('hidden');
+ loadSmartReview(a);
+}
+async function loadSmartReview(asset){
+ const panel=$('smartReviewSuggestions');
+ if(!panel)return;
+ try{
+  const data=await api(`/api/quotes/${state.quote.id}/match-review/${encodeURIComponent(asset.id)}`);
+  if(state.reviewingId!==asset.id || !$('smartReviewSuggestions'))return;
+  const notice=data.source_variant?`<p class="smart-alert">Legacy model variant: ${esc(data.source_variant)}. Check the physical machine before choosing a base-family SKU.</p>`:'';
+  const evidence=data.historical?`<small>Historical records: ${esc(data.historical.variant_count)} variant(s) · ${esc(data.historical.basis)}. Historical codes are not approved alternatives.</small>`:'<small>No exact historical identity recorded for this model/SKU in the currently loaded archive.</small>';
+  const top=data.candidates||[];
+  panel.innerHTML=`<div class="smart-review-title"><b>Catalogue match assistant</b><span>${esc(data.group.quantity)} units · ${esc(data.group.count)} source rows</span></div><p class="editor-hint">${esc(data.explanation)}</p>${notice}${evidence}<div class="smart-review-results">${top.slice(0,8).map((c,i)=>`<div class="match-choice"><div><b>${esc(c.sku)} · ${esc(c.name)}</b><p>${esc(c.model)} · ${esc(c.console_display||c.console||'Console unverified')} · RRP ${c.rrp?money(c.rrp):'Not available'}</p><small>${esc(c.reason)}${c.review_flags?.length?' · '+esc(c.review_flags.join('; ')):''}</small></div><button data-smartchoose="${i}" ${c.duplicate_sku?'disabled':''}>Review & select</button></div>`).join('')||'<p class="editor-hint">No reliable current catalogue candidates found. Record the equipment for commercial review; never invent its RRP.</p>'}</div>`;
+  panel.querySelectorAll('[data-smartchoose]').forEach(b=>b.onclick=()=>{
+   const o=top[Number(b.dataset.smartchoose)];
+   if(!o)return;
+   if(!confirm(`You must verify the actual SKU, configuration and RRP. Apply ${o.sku} to this equipment${$('bulkSameEquipment')?.checked?' and identical source lines':''}?`))return;
+   choose(asset,o);
+  });
+ }catch(e){if($('smartReviewSuggestions')&&state.reviewingId===asset.id)$('smartReviewSuggestions').innerHTML=`<p class="editor-hint">Catalogue assistant unavailable: ${esc(e.message)}. Use manual catalogue search.</p>`;}
+}
+async function downloadAssetRegister(){
+ try{
+  const response=await fetch(`/api/quotes/${state.quote.id}/asset-register.csv`,{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});
+  if(!response.ok)throw new Error('Original source asset register could not be exported');
+  const url=URL.createObjectURL(await response.blob());const link=document.createElement('a');
+  link.href=url;link.download=`Pulse_SmartQuote_${state.quote.quote_no}_Original_Asset_Register.csv`;
+  link.click();setTimeout(()=>URL.revokeObjectURL(url),12000);
+ }catch(e){toast(e.message,true)}
+}
+async function downloadMatchingReport(){
+ try{
+  const path=`/api/quotes/${state.quote.id}/matching-report.csv`;
+  const res=await fetch(path,{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});
+  if(!res.ok)throw new Error('Unable to export matching report');
+  const url=URL.createObjectURL(await res.blob());const a=document.createElement('a');
+  a.href=url;a.download=`Pulse_SmartQuote_${state.quote.quote_no}_Matching_Review.csv`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),12000);
+ }catch(e){toast(e.message,true)}
 }
 async function choose(a,option){
  try{const d=await api(`/api/quotes/${state.quote.id}/resolve`,{method:'POST',body:JSON.stringify({asset_id:a.id,option,apply_to_similar:!!$('bulkSameEquipment')?.checked})});apply(d);render();$('modal').classList.add('hidden');toast('Machine selected and priced. Other identical assets were updated when requested.');}
@@ -233,7 +273,7 @@ async function addUserFromUI(){try{const data={username:$('newUsername').value,r
 function bind(){
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
- $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el)el.addEventListener('change',()=>saveDetails(true))});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
+ $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el)el.addEventListener('change',()=>saveDetails(true))});$('filePicker').onchange=e=>importFile(e.target.files[0]);$('browseAgreement').onclick=()=>$('agreementPicker').click();$('agreementPicker').onchange=e=>importAgreement(e.target.files[0]);$('browseOldCalcs').onclick=()=>$('oldCalcsPicker').click();$('oldCalcsPicker').onchange=e=>importOldCalcs(e.target.files[0]);$('browseButton').onclick=()=>$('filePicker').click();$('loadSample').onclick=()=>importFile(sampleCsv());$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;

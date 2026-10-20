@@ -107,7 +107,8 @@ def grouped_assets(assets,price_by_id=None):
                     'qty':asset.get('qty',1), 'source_cells':asset.get('source_cells',{}),
                     'source_description':asset.get('source_description',asset.get('name','')),
                     'install_date':asset.get('install_date',''),
-                    'original_serial':asset.get('original_serial','')})
+                    'original_serial':asset.get('original_serial',''),
+                    'source_raw_columns':asset.get('source_raw_columns',[])})
     result=[]
     for g in groups.values():
         g['source_sheets']=sorted(g['source_sheets'])

@@ -83,3 +83,12 @@
 
 /* Asset consolidation: concise quote rows with on-demand original source details. */
 .asset-register{margin-top:6px;font-size:11px;color:#33465c}.asset-register summary{cursor:pointer;color:#2b6fa8;font-weight:700}.asset-register-list{max-height:170px;overflow:auto;background:#f6f9fd;border:1px solid #dbe5f1;border-radius:8px;padding:7px;margin-top:5px;font-size:10px;line-height:1.7}.asset-register-list div{border-bottom:1px solid #e7edf5}.history-heading{margin:16px 0 7px;padding:12px;background:#eaf2fc;border-radius:9px;display:flex;gap:7px;flex-direction:column}.history-heading small{color:#55677d}.history-result{padding:9px 12px;border-bottom:1px solid #d9e5f2;background:#fff}.history-result small{display:block;color:#64758a;margin-top:3px}.assets-panel td{vertical-align:top}
+
+/* V10 guided group matching: always advisory, no automatic price approval. */
+.smart-review{margin:12px 0 20px;padding:15px;border:1px solid #cbdcf1;border-radius:12px;background:#f7faff}
+.smart-review-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:7px}
+.smart-review-title b{font-size:14px;color:#223c5d}.smart-review-title span{font-size:12px;color:#627890}
+.smart-review .match-choice{background:#fff;border:1px solid #e3ebf5;border-radius:9px;margin:7px 0;padding:9px}
+.smart-review .match-choice small{display:block;margin-top:5px;color:#736b50;line-height:1.45}
+.smart-alert{background:#fff4e7;padding:10px 12px;border-radius:8px;color:#80511f;font-weight:700}
+.review-controls{flex-wrap:wrap}
