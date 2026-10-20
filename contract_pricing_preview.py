@@ -32,6 +32,74 @@ def features(text):
     }
 
 
+
+def source_sku_reference(asset):
+    """A unique RRP for a documented exact 2026 SKU (DRAFT, not approved)."""
+    code=_clean(asset.get('code')).upper()
+    model=_model(asset)
+    if not re.fullmatch(r'[0-9]{3}[A-Z]-[A-Z0-9.-]{2,}',code):return None
+    if not model or model not in _index() or code not in _index()[model]:return None
+    make=_clean(asset.get('make')).lower()
+    if any(x in make for x in ('technogym','life fitness','matrix','concept2','concept 2','wattbike','stairmaster','precor','keiser')):return None
+    rows=_index()[model][code]
+    prices={x['rrp'] for x in rows}
+    if len(prices)!=1:return None
+    original=_clean(asset.get('source_description') or asset.get('name'))
+    # A bare SKU can be legacy/revised; require corroborating product/console evidence.
+    if len(original)<45 or not ('console' in original.casefold() or _clean(asset.get('console'))):return None
+    recorded=features(original)
+    source_features=[features(x['name']) for x in rows]
+    for size in recorded['size']:
+        if not all(size in f['size'] for f in source_features):return None
+    if recorded['touchscreen'] and not all(f['touchscreen'] for f in source_features):return None
+    if recorded['tactile'] and not all(f['tactile'] for f in source_features):return None
+    if recorded['ifi'] and not all(f['ifi'] for f in source_features):return None
+    explicit=features(asset.get('console'))
+    for size in explicit['size']:
+        if not all(size in f['size'] for f in source_features):return None
+    if explicit['touchscreen'] and not all(f['touchscreen'] for f in source_features):return None
+    if explicit['tactile'] and not all(f['tactile'] for f in source_features):return None
+    chosen=rows[0]
+    return {'model':model,'rrp':float(next(iter(prices))),
+      'reference_sku':code,'reference_name':chosen['name'],
+      'source_variants':len(rows),'console_label':chosen['console_label'],
+      'source':'Full Master Price List 24-08-2026.xlsx',
+      'basis':'Exact stock code in dated 2026 RRP source; provisional tariff and approval required',
+      'confidence':'exact_source_sku','rate_basis':'source_exact_sku'}
+
+
+def strength_spec_reference(asset):
+    """A numerical but unapproved guide when a rich legacy specification matches one price."""
+    model=_model(asset)
+    if not model or model not in _index():return None
+    code=_clean(asset.get('code')).upper()
+    if not re.fullmatch(r'[0-9]{3}H(?:-[A-Z0-9.-]+)?',code or model):return None
+    make=_clean(asset.get('make')).lower()
+    if any(x in make for x in ('technogym','life fitness','matrix','concept2','stairmaster','precor','keiser')):return None
+    desc=_clean(asset.get('source_description') or asset.get('name')).lower()
+    feat=features(desc)
+    if not(feat['premium'] and feat['size']==('10.1',) and feat['touchscreen']):return None
+    # The premium upholstery and machine configuration are material to RRP.
+    required=('carbon fibre','red stitching','sand black','weight stack')
+    if not all(term in desc for term in required):return None
+    candidates=[]
+    for sku,rows in _index()[model].items():
+        rrps={r['rrp'] for r in rows}
+        if len(rrps)!=1:continue
+        for row in rows:
+            name=row['name'].lower();f=features(name)
+            if f['premium'] and f['size']==('10.1',) and f['touchscreen'] and all(term in name for term in required):
+                candidates.append(row)
+    rrps={r['rrp'] for r in candidates}
+    if len(rrps)!=1:return None
+    chosen=sorted(candidates,key=lambda x:x['sku'])[0]
+    return {'model':model,'rrp':float(next(iter(rrps))),
+      'reference_sku':chosen['sku'],'source_variants':len({r['sku'] for r in candidates}),
+      'reference_name':chosen['name'],'console_label':chosen['console_label'],
+      'source':'Full Master Price List 24-08-2026.xlsx',
+      'basis':'Matching premium 10.1-inch strength console specification, one source RRP; installed legacy SKU and connectivity not confirmed',
+      'confidence':'unique_strength_spec_price','rate_basis':'source_spec_equivalent'}
+
 def exact_config_from_description(asset):
     """Unique-price *draft* RRP if an imported spec identifies one config.
 
@@ -66,8 +134,12 @@ def exact_config_from_description(asset):
 
 
 def draft_reference(asset):
+    match=source_sku_reference(asset)
+    if match:return match
     match=exact_config_from_description(asset)
     if match:return {**match,'confidence':'exact_source_configuration','rate_basis':'source_config'}
+    match=strength_spec_reference(asset)
+    if match:return match
     # The model-AAA reference for simple strength machines was explicitly
     # requested as a draft baseline; it is never an assertion of true SKU.
     g=guide(asset)

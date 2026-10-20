@@ -623,7 +623,7 @@ def calc_quote(q):
   # A distinctive imported 2026 source configuration, or an explicitly
   # permitted model-AAA strength baseline, can provide a numerical DRAFT
   # without pretending we know the installed SKU or approving the tariff.
-  if price is None and not a.get('qty_issue') and a.get('manual_annual_unit') in (None,''):
+  if price is None and not a.get('qty_issue') and a.get('manual_annual_unit') in (None,'') and a.get('match_type')!='Conflicting duplicate SKU':
    reference=staff_draft_reference(a)
    if reference:
     name=' '.join((str(a.get('name') or ''),str(a.get('code') or ''),str(a.get('model') or ''))).lower()
