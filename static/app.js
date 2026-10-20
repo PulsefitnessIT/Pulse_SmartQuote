@@ -106,6 +106,14 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  const pmap=Object.fromEntries(s.lines.map(l=>[l.id,l.price]));
  const needs=a=>(!a.excluded&&(!pmap[a.id]||pmap[a.id]?.basis==='historic-reference'||pmap[a.id]?.basis==='staff-guided-estimate'||a.qty_issue)) || (a.excluded&&!(a.exclusion_reason||'').trim());
  const todo=q.assets.filter(needs);
+ const exceptions=s.pricing_exceptions||[];
+ const coverage=$('pricingCoverage');
+ if(coverage){
+  const total=Math.max(0,s.rows-s.excluded_rows);
+  const mismatched=s.source_rrp_reconciled_rows||0;
+  coverage.classList.toggle('hidden',!total);
+  if(total)coverage.innerHTML=`<b>${s.priced_rows} of ${total} included equipment lines have a numerical price</b>${exceptions.length?` · <strong>${exceptions.length} require RRP/scope review</strong>`:' · No missing prices'}${mismatched?` · ${mismatched} stale catalogue RRPs replaced with provisional 2026 source figures`:''}${exceptions.length?`<div class="coverage-exceptions">${exceptions.map(x=>`<span title="${esc(x.reason)}"><b>${esc(x.code||'Unknown')}</b> — ${esc(x.reason)}</span>`).join('')}</div>`:''}<small>Current RRP evidence and draft maintenance tariffs must be commercially approved before customer issue.</small>`;
+ }
  $('reviewIssuesCount').textContent=todo.length;
  $('reviewAll').classList.toggle('active',state.filter==='all');$('reviewIssues').classList.toggle('active',state.filter==='issues');
  const displayed=state.groups.length?state.groups:q.assets.map(a=>({representative:a,qty:a.qty,ids:[a.id],serials:a.serial?[a.serial]:[],source_rows:[a.source_row],price:pmap[a.id]}));
@@ -117,7 +125,7 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
   const guideRow=s.lines.find(line=>line.id===a.id);
   const guide=guideRow?.guide;
   const guideText=guide?guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit):money(guide.min_monthly_unit)+'–'+money(guide.max_monthly_unit):'';
-  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'Needs a price':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
+  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'RRP review':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
   const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='staff-guided-estimate'||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
   const identifier=a.code||a.model||selected?.model||'Model not supplied';
   const name=a.display_name||a.name||selected?.name||'Equipment description not supplied';

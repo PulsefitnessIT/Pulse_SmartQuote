@@ -11,7 +11,7 @@ from renewal_pricing import family_reference
 from asset_intelligence import normalize_asset, grouped_assets
 from smart_candidates import family_code, suggest as suggest_review_candidates
 from staff_price_guides import guide as staff_guide
-from contract_pricing_preview import draft_reference as staff_draft_reference
+from contract_pricing_preview import draft_reference as staff_draft_reference, source_sku_reference
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -607,7 +607,7 @@ def calc_quote(q):
  if tier not in PRICING['tiers']:tier='Gold'
  discount=max(0,min(100,discount))
  term=max(1,min(5,int(q.get('term') or 1)))
- summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[]}
+ summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[],'pricing_exceptions':[],'source_rrp_reconciled_rows':0}
  rows=q.get('assets',[]);summary['rows']=len(rows)
  for a in rows:
   if a.get('excluded'):
@@ -620,6 +620,23 @@ def calc_quote(q):
   if a.get('qty_issue'):
    summary['issues'].append(f"Row {a.get('source_row','?')}: {a['qty_issue']}")
   price=price_line(a,level,tier,discount)
+  # A dated source RRP discrepancy must never silently keep an older price.
+  # Keep the installed SKU, source invoice, original live catalogue and PDFs intact.
+  # Reprice ONLY the draft invoice line; commercial approval is still required.
+  if (price and a.get('invoice_ref') and a.get('manual_annual_unit') in (None,'')
+      and a.get('match_type')!='Conflicting duplicate SKU' and price.get('rrp')):
+   current=source_sku_reference(a)
+   if current and abs(float(price['rrp'])-current['rrp'])>.009:
+    chosen=a.get('selected') or {}
+    temporary={**chosen,'rrp':current['rrp'],'price_origin':'staff-guided-estimate',
+         'eligible':'Estimate - approval required','approved':'Not approved',
+         'pricing_rule':'2026 source RRP differs from live catalogue; pricing manager reconciliation required'}
+    refreshed=price_line({**a,'selected':temporary},level,tier,discount)
+    if refreshed:
+     refreshed.update({'reference_sku':current['reference_sku'],
+        'preview_confidence':'source_rrp_mismatch','review_required':True,
+        'previous_catalogue_rrp':price['rrp']})
+     price=refreshed
   # A distinctive imported 2026 source configuration, or an explicitly
   # permitted model-AAA strength baseline, can provide a numerical DRAFT
   # without pretending we know the installed SKU or approving the tariff.
@@ -639,7 +656,25 @@ def calc_quote(q):
      price['reference_sku']=reference['reference_sku']
      price['preview_confidence']=reference['confidence']
      price['review_required']=True
-  if price:summary['annual']+=price['annual'];summary['priced_rows']+=1
+  if price:
+   summary['annual']+=price['annual'];summary['priced_rows']+=1
+   if price.get('preview_confidence')=='source_rrp_mismatch':
+    summary['source_rrp_reconciled_rows']+=1
+  else:
+   sku=upper(a.get('code') or a.get('model'))
+   if a.get('qty_issue'):
+    reason='Quantity unconfirmed; check invoice quantity first.'
+   elif a.get('match_type')=='Conflicting duplicate SKU':
+    reason='Conflicting source SKU; pricing manager must reconcile catalogue identity and RRP.'
+   elif sku.startswith('SC') or 'body composition' in neat(a.get('name')).lower():
+    reason='Body composition analyser: confirm maintenance scope and obtain an approved RRP or annual service rate.'
+   elif a.get('invoice_ref'):
+    reason='No defensible current 2026 equipment RRP; pricing manager must verify legacy configuration or enter an evidence-backed rate.'
+   else:
+    reason='No current equipment/RRP evidence; confirm model and approved price.'
+   summary['pricing_exceptions'].append({'id':a.get('id'),'code':sku,
+       'source_row':a.get('source_row'),'qty':qty,'reason':reason})
+   summary['issues'].append(f"Row {a.get('source_row','?')} · {sku}: {reason} — choose a machine or enter an evidence-backed price.")
   manual=a.get('manual_annual_unit') is not None and a.get('manual_annual_unit')!=''
   if manual:
    if len(neat(a.get('manual_price_source')))<12:
@@ -677,7 +712,8 @@ def calc_quote(q):
        {k:v['standard'] for k,v in RATES.items()})
    except (ValueError,TypeError,ArithmeticError):preview_guide=None
    if preview_guide:summary['guide_rows']+=1
-  summary['lines'].append({'id':a.get('id'),'price':price,'guide':preview_guide,'issues':a.get('issues',[])})
+  summary['lines'].append({'id':a.get('id'),'price':price,'guide':preview_guide,'issues':a.get('issues',[]),
+   'pricing_exception':next((x['reason'] for x in summary['pricing_exceptions'] if x['id']==a.get('id')),None)})
  summary['annual']=money(summary['annual']);summary['monthly']=money(summary['annual']/12);summary['term_total']=money(summary['annual']*term)
  if not neat(q.get('customer')) or not neat(q.get('site')):summary['issues'].append('Enter the customer and site.')
  visits=int(q.get('visits',1))

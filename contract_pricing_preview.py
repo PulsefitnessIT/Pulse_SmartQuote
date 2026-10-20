@@ -46,7 +46,16 @@ def source_sku_reference(asset):
     if len(prices)!=1:return None
     original=_clean(asset.get('source_description') or asset.get('name'))
     # A bare SKU can be legacy/revised; require corroborating product/console evidence.
-    if len(original)<45 or not ('console' in original.casefold() or _clean(asset.get('console'))):return None
+    if len(original)<45 or not ('console' in original.casefold() or _clean(asset.get('console'))):
+        if not asset.get('invoice_ref'):return None
+        # Historic invoices identify many non-console machines by exact SKU.
+        # Corroborate product words; a unique current SKU RRP is DRAFT evidence.
+        stop={'line','club','premium','classic','with','equipment','sand','black',
+              'grey','silver','dark','steel','weight','stack','in','the','and',
+              'vertical','horizontal','covered','total','stand'}
+        tokens={w for w in re.findall(r'[a-z]{4,}',original.lower()) if w not in stop}
+        source=' '.join(row['name'].lower() for row in rows)
+        if len(tokens)<1 or len([w for w in tokens if w in source])<min(2,len(tokens)):return None
     recorded=features(original)
     source_features=[features(x['name']) for x in rows]
     for size in recorded['size']:
