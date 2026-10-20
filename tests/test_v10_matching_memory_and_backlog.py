@@ -167,9 +167,19 @@ class MatchingMemoryTests(unittest.TestCase):
         self.assertTrue(all(a['source_raw_columns'] for a in parsed['assets']))
 
     def test_metadata_only_source_does_not_meet_year_requirement(self):
-        folder=Path(engine.ROOT)
-        result=evaluate(folder)
-        if (folder/'data/historical_catalogue_manifest.json').exists():
+        # Synthetic archive: regression must remain valid after the missing
+        # physical 2021 n workbook is integrated into real deployments.
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / 'data'
+            data.mkdir()
+            (data/'historical_catalogue_index.json').write_text(json.dumps({
+                'records': {'SYN-001':{'sku':'SYN-001','evidence_only':True}},'aliases':{}}))
+            (data/'historical_catalogue_manifest.json').write_text(json.dumps({
+                'unique_skus':1,'alias_codes':0,'archive_review_status':'Not approved',
+                'worksheets':[{'year':y,'status':'read','equipment_rows':0 if y==2021 else 1,
+                               'metadata_only':y==2021} for y in range(2020,2027)]}))
+            result=evaluate(tmp)
             self.assertIn(2021,result['historical']['metadata_only_years'])
             self.assertNotIn(2021,result['historical']['source_years'])
             self.assertFalse(result['historical']['archive_ready'])

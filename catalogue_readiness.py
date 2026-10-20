@@ -1,5 +1,6 @@
 """Read-only V10 deployment checks. Does not approve commercial prices or products."""
 import json
+import gzip
 from pathlib import Path
 
 YEARS = set(range(2020, 2027))
@@ -7,7 +8,11 @@ YEARS = set(range(2020, 2027))
 
 def _load_json(path):
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        if path.suffix == ".gz":
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                value = json.load(handle)
+        else:
+            value = json.loads(path.read_text(encoding="utf-8"))
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError, UnicodeError):
         return {}
@@ -21,6 +26,8 @@ def evaluate(root, pricing=None):
     """
     root = Path(root)
     index_path = root / "data" / "historical_catalogue_index.json"
+    if not index_path.is_file():
+        index_path = index_path.with_suffix(index_path.suffix + ".gz")
     manifest_path = root / "data" / "historical_catalogue_manifest.json"
     index = _load_json(index_path)
     manifest = _load_json(manifest_path)

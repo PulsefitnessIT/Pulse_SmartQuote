@@ -1,0 +1,1082 @@
+{
+  "archive_scope": "Physical 2020-2024 revisions combined with 2025-2026 recovered identity snapshots; original 2025-2026 workbooks still require source verification",
+  "archive_review_status": "Not approved",
+  "source_files": 22,
+  "snapshots": 123852,
+  "unique_skus": 7390,
+  "alias_codes": 231,
+  "ambiguous_alias_codes": 114,
+  "worksheets": [
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "sheet": "Database",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Treadmill",
+      "status": "read",
+      "equipment_rows": 32
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Cross-Trainer",
+      "status": "read",
+      "equipment_rows": 26
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Cycle",
+      "status": "read",
+      "equipment_rows": 31
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Standing_Seated Stepper",
+      "status": "read",
+      "equipment_rows": 26
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Lateral Trainer",
+      "status": "read",
+      "equipment_rows": 14
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Indoor Rower_Upper Body Ergo",
+      "status": "read",
+      "equipment_rows": 9
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Trakk_PulseMove",
+      "status": "read",
+      "equipment_rows": 20
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Console Technology",
+      "status": "read",
+      "equipment_rows": 8
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Asset Management",
+      "status": "read",
+      "equipment_rows": 1
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Selectorised H-Strength",
+      "status": "read",
+      "equipment_rows": 2528
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Selectorised G-Strength",
+      "status": "read",
+      "equipment_rows": 532
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Selectorised Classic",
+      "status": "read",
+      "equipment_rows": 83
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Selectorised Dual Use",
+      "status": "read",
+      "equipment_rows": 126
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Selectorised Plate Loaded",
+      "status": "read",
+      "equipment_rows": 231
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Benches and Oly Bench Presses",
+      "status": "read",
+      "equipment_rows": 248
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Rack and Platform",
+      "status": "read",
+      "equipment_rows": 59
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Dumbbells and Barbells",
+      "status": "read",
+      "equipment_rows": 129
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Olympic Plates",
+      "status": "read",
+      "equipment_rows": 45
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Racks and Storage",
+      "status": "read",
+      "equipment_rows": 29
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Strength Accessories",
+      "status": "read",
+      "equipment_rows": 25
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "5.2 - Functional Accessories",
+      "status": "read",
+      "equipment_rows": 149
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "5.3 - Limitless",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "6.1 - Group Cycle",
+      "status": "read",
+      "equipment_rows": 7
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "6.2 - Circuit",
+      "status": "read",
+      "equipment_rows": 17
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "6.3 - Studio Accessories",
+      "status": "read",
+      "equipment_rows": 92
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "year": 2020,
+      "revision": "a",
+      "sheet": "Potentially, End of Life",
+      "status": "read",
+      "equipment_rows": 95
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.a(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.b(1).xlsx",
+      "year": 2020,
+      "revision": "b",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.b(1).xlsx",
+      "year": 2020,
+      "revision": "b",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4324
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.b(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.b(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.b(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.c(1).xlsx",
+      "year": 2020,
+      "revision": "c",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.c(1).xlsx",
+      "year": 2020,
+      "revision": "c",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4354
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.c(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.c(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.c(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.d(1).xlsx",
+      "year": 2020,
+      "revision": "d",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.d(1).xlsx",
+      "year": 2020,
+      "revision": "d",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4357
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.d(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.d(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.d(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "year": 2020,
+      "revision": "e",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "year": 2020,
+      "revision": "e",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4298
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "year": 2020,
+      "revision": "e",
+      "sheet": "Not Yet Released",
+      "status": "read",
+      "equipment_rows": 51
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.e(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "year": 2020,
+      "revision": "f",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "year": 2020,
+      "revision": "f",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4344
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "year": 2020,
+      "revision": "f",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 11
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "year": 2020,
+      "revision": "f",
+      "sheet": "Second Hand",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.f(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "year": 2020,
+      "revision": "g",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "year": 2020,
+      "revision": "g",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4344
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "year": 2020,
+      "revision": "g",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 11
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "year": 2020,
+      "revision": "g",
+      "sheet": "Second Hand",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.g(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "year": 2020,
+      "revision": "h",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "year": 2020,
+      "revision": "h",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4345
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "year": 2020,
+      "revision": "h",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 11
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "year": 2020,
+      "revision": "h",
+      "sheet": "Second Hand",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.h(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "CH - 2020 - Master Input File v2 (Website & Sage Layout) - Transition_Iss.i.xlsx",
+      "year": 2020,
+      "revision": "i",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "CH - 2020 - Master Input File v2 (Website & Sage Layout) - Transition_Iss.i.xlsx",
+      "year": 2020,
+      "revision": "i",
+      "sheet": "Sage Import",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4431
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Sage Import Data",
+      "status": "read",
+      "equipment_rows": 4430
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Suppliers",
+      "status": "read",
+      "equipment_rows": 231
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 6
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "year": 2020,
+      "revision": "j",
+      "sheet": "Second Hand",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.j(1).xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "year": 2020,
+      "revision": "k",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "year": 2020,
+      "revision": "k",
+      "sheet": "Second-Hand Import",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "year": 2020,
+      "revision": "k",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4567
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "year": 2020,
+      "revision": "k",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 6
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.k.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "year": 2020,
+      "revision": "l",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "year": 2020,
+      "revision": "l",
+      "sheet": "Second-Hand Import",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "year": 2020,
+      "revision": "l",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4617
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "year": 2020,
+      "revision": "l",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 6
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.l.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "year": 2020,
+      "revision": "m",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "year": 2020,
+      "revision": "m",
+      "sheet": "Second-Hand Import",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "year": 2020,
+      "revision": "m",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4619
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "year": 2020,
+      "revision": "m",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 6
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2020 - Master Input File v2 (Website Layout) - Transition_Iss.m.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "year": 2021,
+      "revision": "n",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "year": 2021,
+      "revision": "n",
+      "sheet": "Second-Hand Import",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "year": 2021,
+      "revision": "n",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 4622
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "year": 2021,
+      "revision": "n",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 5
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2021 - Master Input File v2 (Website Layout) - Transition_Iss.n.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "year": 2022,
+      "revision": "o",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "year": 2022,
+      "revision": "o",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 5154
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "year": 2022,
+      "revision": "o",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 5
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.o.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "year": 2022,
+      "revision": "p",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "year": 2022,
+      "revision": "p",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 5229
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "year": 2022,
+      "revision": "p",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 5
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.p.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "year": 2022,
+      "revision": "r",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "year": 2022,
+      "revision": "r",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 5249
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "year": 2022,
+      "revision": "r",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 5
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2022 - Master Input File v2 (Website Layout) - Transition_Iss.r.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "year": 2023,
+      "revision": "s",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "year": 2023,
+      "revision": "s",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 6255
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "year": 2023,
+      "revision": "s",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2023 - Master Input File v2 (Website Layout) - Transition_Iss.s.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "year": 2024,
+      "revision": "t",
+      "sheet": "Database",
+      "status": "read",
+      "equipment_rows": 0
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "year": 2024,
+      "revision": "t",
+      "sheet": "Assembled Database",
+      "status": "read",
+      "equipment_rows": 6441
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "year": 2024,
+      "revision": "t",
+      "sheet": "Third Party",
+      "status": "read",
+      "equipment_rows": 4
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "sheet": "App 1 - Cypher",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "sheet": "App 2 - Key",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2024 - Master Input File v2 (Website Layout) - Transition_Iss.t.xlsx",
+      "sheet": "App 3 - Code",
+      "status": "skipped",
+      "reason": "No SKU and product name header in first 15 rows"
+    },
+    {
+      "file": "2025 U — 2025 - Master Input File v2 (Website Layout) - Transition_Iss.u(3).xlsx",
+      "sheet": "Recovered SQLite audit",
+      "year": 2025,
+      "revision": "U",
+      "status": "read",
+      "equipment_rows": 13021,
+      "metadata_only": false,
+      "recovered_identity_only": true
+    },
+    {
+      "file": "2025 V — 2025 - Master Input File v2 (Website Layout) - Transition_Iss.v.xlsx",
+      "sheet": "Recovered SQLite audit",
+      "year": 2025,
+      "revision": "V",
+      "status": "read",
+      "equipment_rows": 13021,
+      "metadata_only": false,
+      "recovered_identity_only": true
+    },
+    {
+      "file": "2026 W — 2026 - Master Input File v2 (Website Layout) - Transition_Iss.w.xlsx",
+      "sheet": "Recovered SQLite audit",
+      "year": 2026,
+      "revision": "W",
+      "status": "read",
+      "equipment_rows": 6877,
+      "metadata_only": false,
+      "recovered_identity_only": true
+    }
+  ],
+  "by_year": {
+    "2020": 57951,
+    "2021": 4631,
+    "2022": 15647,
+    "2023": 6259,
+    "2024": 6445,
+    "2025": 26042,
+    "2026": 6877
+  },
+  "reconciliation": {
+    "new_source_unique_skus": 6945,
+    "recovered_source_unique_skus": 6909,
+    "intersection_unique_skus": 6464,
+    "new_only_unique_skus": 481,
+    "recovered_only_unique_skus": 445,
+    "newer_recovered_variants_preserved": 6441,
+    "new_source_variants_preferred": 23,
+    "physical_files_read": 19,
+    "physical_observations_read": 90933,
+    "recovered_2025_2026_observations": 32919
+  },
+  "pricing_status": "IDENTITY ONLY - NO APPROVED RRP",
+  "note": "Catalogue identities and source provenance are not permission to use a historical RRP or substitute a newer console. Owner source signoff is pending."
+}

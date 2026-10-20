@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent
 ALLOWED_DATA = {
     "2025_master_legacy_index.json", "catalog.json", "configs.json",
     "legacy.json", "pricing.json", "historical_catalogue_index.json",
+    "historical_catalogue_index.json.gz",
     "historical_catalogue_manifest.json",
 }
 ROOT_EXTENSIONS = {".py", ".md", ".bat", ".sh"}

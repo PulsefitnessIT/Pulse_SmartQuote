@@ -76,7 +76,7 @@ def valid_alias(value: str) -> bool:
 def source_info(path: Path) -> tuple[int | None, str]:
     match = re.search(r"(?<!\d)(20(?:20|21|22|23|24|25|26))(?!\d)", path.name)
     year = int(match.group(1)) if match else None
-    version = re.search(r"Transition_Iss\.([a-z])(?=\.|$)", path.name, re.I)
+    version = re.search(r"Transition_Iss\.([a-z])(?=\.|\(|$)", path.name, re.I)
     return year, version.group(1).lower() if version else ""
 
 

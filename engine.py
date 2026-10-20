@@ -2,7 +2,7 @@
 All prices/names are source-derived snapshots. No AI is permitted to invent a price.
 """
 from __future__ import annotations
-import base64,csv,difflib,io,json,os,re,zipfile,xml.etree.ElementTree as ET
+import base64,csv,difflib,gzip,io,json,os,re,zipfile,xml.etree.ElementTree as ET
 from decimal import Decimal,ROUND_HALF_UP
 from pathlib import Path
 from collections import Counter
@@ -19,7 +19,13 @@ PRICING=json.loads((ROOT/'data/pricing.json').read_text())
 HISTORIC_MASTER=json.loads((ROOT/'data/2025_master_legacy_index.json').read_text())
 # V10 historical evidence never modifies live catalogue RRPs or tariffs.
 _HISTORIC_V10_PATH=ROOT/'data/historical_catalogue_index.json'
-HISTORIC_V10=json.loads(_HISTORIC_V10_PATH.read_text(encoding='utf-8')) if _HISTORIC_V10_PATH.exists() else {'records':{},'aliases':{}}
+if _HISTORIC_V10_PATH.exists():
+ HISTORIC_V10=json.loads(_HISTORIC_V10_PATH.read_text(encoding='utf-8'))
+elif (_HISTORIC_V10_PATH.parent/(_HISTORIC_V10_PATH.name+'.gz')).exists():
+ with gzip.open(_HISTORIC_V10_PATH.parent/(_HISTORIC_V10_PATH.name+'.gz'),'rt',encoding='utf-8') as _history_stream:
+  HISTORIC_V10=json.load(_history_stream)
+else:
+ HISTORIC_V10={'records':{},'aliases':{}}
 HISTORIC_V10_RECORDS=HISTORIC_V10.get('records',{})
 HISTORIC_V10_ALIASES=HISTORIC_V10.get('aliases',{})
 HISTORIC_V10_MODELS={}
@@ -46,7 +52,7 @@ def historical_identity(code='',model='',limit=8):
  results=[]
  for key in matches[:limit]:
   item=HISTORIC_V10_RECORDS.get(key,{})
-  results.append({f:item.get(f,'') for f in ('sku','name','model','console','status','year','first_seen','source')})
+  results.append({f:item.get(f,'') for f in ('sku','name','model','console','status','year','first_seen','source','source_revisions','source_row')})
  return {'lookup':code or model,'basis':source,'variant_count':total,
          'ambiguous':total>1,'evidence_only':True,'variants':results,
          'message':'Historical identity evidence only. No RRP, tariff or replacement approved.'}
@@ -70,7 +76,7 @@ def search_historical(query,limit=12):
   else:continue
   ranked.append((score,sku,item))
  ranked.sort(key=lambda x:(-x[0],x[1]))
- result=[{field:item.get(field,'') for field in ('sku','model','name','console','year','first_seen','source','status')}
+ result=[{field:item.get(field,'') for field in ('sku','model','name','console','year','first_seen','source','status','source_revisions','source_row')}
          for _,_,item in ranked[:limit]]
  return {'results':result,'total':len(ranked),
          'basis':'Historical catalogue search — identity only, unapproved for pricing',

@@ -56,6 +56,22 @@ class CatalogueReadinessTests(unittest.TestCase):
             self.assertFalse(report["historical"]["manifest_consistent"])
             self.assertFalse(report["automated_preflight_passes"])
 
+    def test_compressed_catalogue_index_is_supported(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as temp:
+            data = Path(temp) / 'data'
+            data.mkdir()
+            raw = json.dumps({'records':{'260G-AAS':{'sku':'260G-AAS','evidence_only':True}},'aliases':{}}).encode()
+            with gzip.open(data/'historical_catalogue_index.json.gz','wb') as out:
+                out.write(raw)
+            (data/'historical_catalogue_manifest.json').write_text(json.dumps({
+                'unique_skus':1,'alias_codes':0,'archive_review_status':'Not approved',
+                'worksheets':[{'year':year,'status':'read','equipment_rows':1} for year in range(2020,2027)]}))
+            status=evaluate(temp)
+            self.assertTrue(status['historical']['index_loaded'])
+            self.assertEqual(status['historical']['unique_skus'],1)
+            self.assertFalse(status['historical']['archive_ready'])
+
     def test_malformed_index_cannot_be_accepted(self):
         with tempfile.TemporaryDirectory() as temp:
             data = Path(temp) / "data"

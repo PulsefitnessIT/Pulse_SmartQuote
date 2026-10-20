@@ -43,7 +43,8 @@ def validate(folder):
     if not isinstance(source_sheets, list) or not source_sheets:
         raise ValueError("Manifest must contain source worksheets.")
     years = {x.get("year") for x in source_sheets
-             if isinstance(x, dict) and x.get("status") == "read"}
+             if isinstance(x, dict) and x.get("status") == "read"
+             and x.get("equipment_rows", 1) > 0 and not x.get("metadata_only")}
     missing = YEARS - years
     if missing:
         raise ValueError("No imported source sheets for year(s): " + ", ".join(map(str, sorted(missing))))
