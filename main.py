@@ -327,7 +327,7 @@ async def invoice_preview(id:str,request:Request):
     return {'invoice':parsed['invoice'],'report':r,
         'candidates':[{'code':a['code'],'name':a['name'],'qty':a['qty'],
                        'serial_count':len(a['serials']),'page':a['page'],
-                       'product_group':a['product_group']} for a in parsed['assets']],
+                       'product_group':a.get('product_group','')} for a in parsed['assets']],
         'excluded':[{'code':a['code'],'name':a['name'],'reason':a['reason'],
                      'page':a['page']} for a in parsed['excluded']],
         'unstructured_review':parsed['unstructured_review'],
