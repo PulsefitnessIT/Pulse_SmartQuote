@@ -749,6 +749,12 @@ function attachCatalogueRowActions(products){
   select.append(box,caption);
   const view=document.createElement('button');view.type='button';view.className='secondary-btn';
   view.textContent='View details';view.onclick=()=>viewCatalogueItem(item.sku);
+  const machine=header.querySelector('b');
+  if(machine){machine.classList.add('catalogue-machine-link');machine.tabIndex=0;
+   machine.setAttribute('role','button');machine.setAttribute('aria-label','View all details for '+item.sku);
+   machine.onclick=()=>viewCatalogueItem(item.sku);
+   machine.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();viewCatalogueItem(item.sku);}};
+  }
   actions.append(select,view);header.append(actions);
  });
  updateCataloguePrintCount();

@@ -18,6 +18,20 @@ class UI(HTMLParser):
   if tag=='button' and data.get('id','').startswith('nav'):
    self.navs.append(data)
 
+def sample_skus():
+ # Pick catalogued, fully priced, non-conflicting live machines instead of
+ # assuming every 2026 source SKU already exists in the older managed list.
+ found=[]
+ for code,item in engine.BY_SKU.items():
+  if code in engine.DUPLICATE_CODES:continue
+  option=engine.live_catalogue_option(item)
+  if all(engine.price_line({'qty':1,'selected':option},'Standard',tier,0)
+         for tier in ('Silver','Gold','Platinum')):
+   found.append(code)
+   if len(found)==2:break
+ if len(found)<2:raise AssertionError('Fixture catalogue has fewer than two valid priced machines')
+ return found
+
 class CombinedCatalogueTests(unittest.TestCase):
  def setUp(self):
   self.auth=mock.patch.dict(os.environ,{'SMARTQUOTE_AUTH':'off'});self.auth.start()
@@ -37,7 +51,7 @@ class CombinedCatalogueTests(unittest.TestCase):
    self.assertEqual(parser.ids.count(control),1,control)
   self.assertIn('class="panel manager-panel diagnostics-fold"',html)
  def test_source_detail_includes_all_existing_fields_and_tier_calculations(self):
-  sku='305H-AEP'
+  sku=sample_skus()[0]
   r=self.client.get('/api/catalog/item/'+sku)
   self.assertEqual(r.status_code,200,r.text[:300])
   d=r.json()
@@ -53,13 +67,14 @@ class CombinedCatalogueTests(unittest.TestCase):
    self.assertEqual(d['tiers'][tier]['annual'],expected['unit'])
   self.assertNotIn('invoice',d['source'].lower())
  def test_print_selection_is_readonly_with_all_three_tiers(self):
-  source_a=engine.BY_SKU['305H-AEP']['rrp']
+  first,second=sample_skus()
+  source_a=engine.BY_SKU[first]['rrp']
   response=self.client.post('/api/catalog/print-selection',
-    json={'skus':['305H-AEP','310H-AEP','305H-AEP']})
+    json={'skus':[first,second,first]})
   self.assertEqual(response.status_code,200,response.text[:400])
   data=response.json()
-  self.assertEqual([x['sku'] for x in data['items']],['305H-AEP','310H-AEP'])
-  self.assertEqual(engine.BY_SKU['305H-AEP']['rrp'],source_a)
+  self.assertEqual([x['sku'] for x in data['items']],[first,second])
+  self.assertEqual(engine.BY_SKU[first]['rrp'],source_a)
   self.assertIn('commercial approval',data['disclaimer'].lower())
   for item in data['items']:
    self.assertEqual(set(item['tiers']),{'Silver','Gold','Platinum'})
@@ -68,7 +83,7 @@ class CombinedCatalogueTests(unittest.TestCase):
   self.assertEqual(self.client.get('/api/catalog/item/DOES-NOT-EXIST').status_code,404)
   self.assertEqual(self.client.post('/api/catalog/print-selection',json={'skus':[]}).status_code,400)
   self.assertEqual(self.client.post('/api/catalog/print-selection',
-      json={'skus':['305H-AEP']*76}).status_code,400)
+      json={'skus':[sample_skus()[0]]*76}).status_code,400)
   self.assertEqual(self.client.post('/api/catalog/print-selection',
       json={'skus':[3]}).status_code,400)
  def test_manager_routes_remain_manager_only_and_browse_has_no_write_buttons(self):
