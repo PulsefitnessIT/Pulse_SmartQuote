@@ -38,7 +38,8 @@ async function init(){
 }
 async function launchWorkspace(){
  const profile=await api('/api/auth/me');state.user=profile.user;
- $('navManager').style.display=['admin','manager'].includes(profile.user.role)?'':'none';
+ $('navManager').style.display='none';
+ $('catalogManageTab').classList.toggle('hidden',!['admin','manager'].includes(profile.user.role));
  $('navUsers').style.display=profile.user.role==='admin'?'':'none';
  $('managerOperator').value=profile.user.username;$('managerOperator').readOnly=true;
  state.bootstrap=await api('/api/bootstrap');const old=localStorage.getItem('pulse_quote_id');if(old){try{apply(await api('/api/quotes/'+old))}catch(e){await newQuote()}}else{await newQuote()}
@@ -668,7 +669,22 @@ async function downloadVersion(version){try{
  if(!r.ok)throw new Error('Could not retrieve historical quotation');const u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=`Pulse_Fitness_${state.quote.quote_no}_v${version}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(u),15000);
  }catch(e){toast(e.message,true)}}
 function sampleCsv(){const s=`Random export title,24 September 2026,,,,\nPlease quote the equipment at Riverside Leisure,,,,\nEquipment Description, Qty , Product Code, Serial No, Model, Console\nClub Line Treadmill,3,260G-AAS,SN1000-SN1002,260G,Console 5 (Series 2)\nClub Line StepMill,2,200H-AAE,SN301-302,200H,Console 8 (Series 3 Mini)\nInclusive Shoulder Press,1,305H-AGC,SN511,305H,Strength Console\nExisting older treadmill,1,R260G-5.00DRPW,AB-099,260G,Console 5 (Series 2)\nRowing machine - please confirm model,2,,N/A,,\nTOTAL,9,,,,`;return new File([s],'Messy_Leisure_Centre_Assets.csv',{type:'text/csv'})}
-function showView(v){state.view=v;['builder','register','catalogue','manager','users'].forEach(id=>$(id+'View').classList.toggle('hidden',v!==id));['navBuilder','navRegister','navCatalogue','navManager','navUsers'].forEach((id,i)=>$(id).classList.toggle('selected',['builder','register','catalogue','manager','users'][i]===v));$('crumbTitle').textContent={builder:'Smart Quote Builder',register:'Quote Register',catalogue:'Equipment Catalogue',manager:'Master Price List',users:'Staff Users'}[v];if(v==='register')loadRegister();if(v==='manager')loadManager();if(v==='users')loadUsers()}
+function showView(v){
+ if(v==='manager'&&!['admin','manager'].includes(state.user?.role))v='catalogue';
+ state.view=v;
+ const catalog=v==='catalogue'||v==='manager';
+ ['builder','register','catalogue','users'].forEach(id=>$(id+'View').classList.toggle('hidden',id==='catalogue'?!catalog:id!==v));
+ ['navBuilder','navRegister','navCatalogue','navUsers'].forEach((id,i)=>$(id).classList.toggle('selected',['builder','register','catalogue','users'][i]===(catalog?'catalogue':v)));
+ $('catalogueBrowseArea').classList.toggle('hidden',v==='manager');
+ $('managerView').classList.toggle('hidden',v!=='manager');
+ $('catalogBrowseTab').classList.toggle('active',v==='catalogue');
+ $('catalogManageTab').classList.toggle('active',v==='manager');
+ $('crumbTitle').textContent={builder:'Smart Quote Builder',register:'Quote Register',catalogue:'Equipment & Prices',manager:'Equipment & Prices',users:'Staff Users'}[v];
+ if(v==='register')loadRegister();
+ if(v==='manager')loadManager();
+ if(v==='catalogue'&&$('catalogSearch').value.trim().length>1)searchCatalogue();
+ if(v==='users')loadUsers();
+}
 let registerRequestId=0;
 async function loadRegister(){try{
  const requestId=++registerRequestId;
@@ -698,7 +714,125 @@ async function searchCatalogue(){
  (d.results.map(s=>`<div class="catalogue-result"><div class="catalogue-result-head"><b>${esc(s.sku)} · ${esc(s.name)}</b><span><strong>RRP</strong> ${s.rrp?money(s.rrp):'Unverified'}</span></div><small>Model ${esc(s.model||'not supplied')} · Console: ${esc(s.console_display||s.console)} ${s.console_status==='description_only'?'(description-derived; mapping not verified)':''}</small><div class="catalogue-tiers"><span>Silver <b>${pkg(s,'Silver')}</b></span><span>Gold <b>${pkg(s,'Gold')}</b></span><span>Platinum <b>${pkg(s,'Platinum')}</b></span></div><div class="catalogue-note">${esc(s.duplicate_sku?'Conflicting source SKU – automatic quote blocked':s.pricing_warning)}${s.pricing_rule?' · '+esc(s.rate_group)+' · '+esc(s.pricing_rule):''}</div></div>`).join('')||'<p>No current priced catalogue results. Check historical evidence below.</p>')+
  (d.historical?.results?.length?`<div class="history-heading"><b>Historical equipment library (${d.historical.total} matches)</b><small>Identity evidence only — a historical item is not an approved replacement or current RRP.</small></div>${d.historical.results.map(h=>`<div class="history-result"><b>${esc(h.sku)} · ${esc(h.name||'Unnamed historical item')}</b><small>Model ${esc(h.model||'unknown')} · Console ${esc(h.console||'unverified')} · Seen ${esc(h.first_seen||'?')}–${esc(h.year||'?')} · ${esc(h.source||'Original master')} · ${esc(h.source_revisions?.length||1)} recorded revision(s)${h.source_row?' · source row '+esc(h.source_row):''}</small></div>`).join('')}`:'')+
  (rrpEvidence.items?.length?`<div class="history-heading"><b>August 2026 RRP source (${rrpEvidence.total} potential variants)</b><small>Unapproved RRP evidence — not a quote price. Confirm exact SKU, console and commercial authorisation.</small></div>${rrpEvidence.items.map(x=>`<div class="history-result"><b>${esc(x.sku)} · ${esc(x.name)}</b><small>Console: ${esc(x.console||'Not confirmed')} · Source RRP: ${x.source_rrp!=null?money(x.source_rrp):'Conflicting or unavailable'} · ${esc(rrp2026Labels[x.status]||x.status)} · <b>Source pending approval</b></small></div>`).join('')}`:'');
+ attachCatalogueRowActions(d.results);
 }
+
+// The catalogue and master price list are a single feature. Staff browse;
+// authorised managers open the editing/workbench tab without a second menu.
+const catalogueSelection=new Set();
+function updateCataloguePrintCount(){
+ const n=catalogueSelection.size;
+ $('printCatalogSelection').textContent='Print selection ('+n+')';
+ $('printCatalogSelection').disabled=n===0||n>75;
+ $('clearCatalogSelection').disabled=n===0;
+ $('printCatalogSelection').title=n>75?'Maximum 75 machines per printout':'';
+}
+function attachCatalogueRowActions(products){
+ const rows=$('catalogResults').querySelectorAll('.catalogue-result');
+ rows.forEach((row,index)=>{
+  const item=products[index];
+  if(!item)return;
+  const header=row.querySelector('.catalogue-result-head');
+  if(!header)return;
+  const actions=document.createElement('div');actions.className='catalogue-actions';
+  const select=document.createElement('label');select.className='catalogue-select';
+  const box=document.createElement('input');box.type='checkbox';
+  box.dataset.catalogSelect=item.sku;
+  box.checked=catalogueSelection.has(item.sku.toUpperCase());
+  box.setAttribute('aria-label','Select '+item.sku+' for price printout');
+  box.onchange=()=>{
+   const code=item.sku.toUpperCase();
+   if(box.checked)catalogueSelection.add(code);else catalogueSelection.delete(code);
+   updateCataloguePrintCount();
+  };
+  const caption=document.createElement('span');caption.textContent='Select';
+  select.append(box,caption);
+  const view=document.createElement('button');view.type='button';view.className='secondary-btn';
+  view.textContent='View details';view.onclick=()=>viewCatalogueItem(item.sku);
+  actions.append(select,view);header.append(actions);
+ });
+ updateCataloguePrintCount();
+}
+function printableFieldValue(x){
+ if(x===null||x===undefined||x==='')return 'Not recorded';
+ return typeof x==='object'?JSON.stringify(x):String(x);
+}
+function catalogueFields(record){
+ return Object.entries(record||{}).map(([key,value])=>
+  '<div class="catalogue-field"><span>'+esc(key.replaceAll('_',' '))+'</span><b>'+esc(printableFieldValue(value))+'</b></div>'
+ ).join('');
+}
+async function viewCatalogueItem(code){
+ try{
+  const d=await api('/api/catalog/item/'+encodeURIComponent(code));
+  const source=d.item,config=d.configuration;
+  $('modalTitle').textContent='Equipment details · '+d.sku;
+  const prices=['Silver','Gold','Platinum'].map(t=>{
+   const p=d.tiers[t];
+   return '<div class="catalogue-tier-card"><strong>'+t+'</strong><b>'+(p?money(p.monthly):'—')+'</b><small>per month</small><span>'+(p?money(p.annual):'Unavailable')+' per year</span></div>';
+  }).join('');
+  const allFields=[
+   ['Complete master product record',source],
+   ['Pricing configuration',config],
+   ['Maintenance tariff values',d.rate],
+   ['Console pricing values',d.console_rule],
+   ['Master source and date',{master_source:d.source,source_date:d.source_snapshot,pricing_status:d.pricing_status}]
+  ].map(([title,data])=>'<h4>'+esc(title)+'</h4><div class="catalogue-fields">'+catalogueFields(data)+'</div>').join('');
+  const conflicts=d.duplicate_sku?'<h4>Conflicting SKU records</h4>'+d.duplicate_source_rows.map(x=>'<div class="catalogue-fields">'+catalogueFields(x)+'</div>').join(''):'';
+  $('modalContent').innerHTML=
+   '<div class="catalogue-detail-intro"><h3>'+esc(source.name||config.name||d.sku)+'</h3><p>'+esc(d.sku)+' · Model '+esc(source.model||'Not recorded')+'</p></div>'+
+   '<div class="catalogue-key-fields">'+
+   '<div><span>Master RRP</span><b>'+(source.rrp?money(source.rrp):'Not recorded')+'</b></div>'+
+   '<div><span>Console</span><b>'+esc(config.console_display||config.console||'Not recorded')+'</b></div>'+
+   '<div><span>Maintenance rate group</span><b>'+esc(config.rate_group||'Not assigned')+'</b></div>'+
+   '<div><span>Coverage</span><b>'+esc(config.coverage_status||config.eligible||'Not confirmed')+'</b></div></div>'+
+   '<h3>Silver / Gold / Platinum contract prices</h3><div class="catalogue-detail-tiers">'+prices+'</div>'+
+   '<p class="catalogue-note">'+esc(d.annual_basis)+' · '+esc(d.pricing_status)+
+   (d.duplicate_sku?' · Duplicate item code: source price needs reconciliation.':'')+'</p>'+
+   '<details class="catalogue-history"><summary>Show all associated master values, source and tariff fields</summary>'+
+    allFields+conflicts+'</details>'+
+   '<div class="editor-actions"><button type="button" class="secondary-btn" id="catalogDetailClose">Close</button>'+
+   (['admin','manager'].includes(state.user?.role)?'<button type="button" class="primary-btn" id="catalogDetailEdit">Edit record</button>':'')+'</div>';
+  $('catalogDetailClose').onclick=()=>$('modal').classList.add('hidden');
+  if($('catalogDetailEdit'))$('catalogDetailEdit').onclick=()=>editCatalogue(d.sku);
+  $('modal').classList.remove('hidden');
+ }catch(e){toast(e.message,true)}
+}
+function catalogPrintHtml(d){
+ const headers=['Silver','Gold','Platinum'];
+ const rows=d.items.map(x=>{
+  const cells=headers.map(t=>{
+   const p=x.tiers[t];
+   return '<td>'+(p?money(p.monthly):'—')+'</td><td>'+(p?money(p.annual):'—')+'</td>';
+  }).join('');
+  return '<tr><td>'+esc(x.sku)+'</td><td>'+esc(x.item.name||'')+'</td>'+
+   '<td>'+esc(x.item.model||'')+'</td><td>'+esc(x.configuration.console_display||x.configuration.console||'')+'</td>'+
+   '<td>'+(x.duplicate_sku?'Conflict':x.item.rrp?money(x.item.rrp):'—')+'</td>'+cells+'</tr>';
+ }).join('');
+ return '<h1>Pulse Fitness · Equipment & Contract Prices</h1>'+
+  '<p>'+d.items.length+' selected machines · '+esc(new Date().toLocaleDateString('en-GB'))+'</p>'+
+  '<table class="catalogue-print-table"><thead><tr><th rowspan="2">Item code</th><th rowspan="2">Equipment</th><th rowspan="2">Model</th><th rowspan="2">Console</th><th rowspan="2">RRP</th>'+
+  '<th colspan="2">Silver</th><th colspan="2">Gold</th><th colspan="2">Platinum</th></tr>'+
+  '<tr><th>Monthly</th><th>Annual</th><th>Monthly</th><th>Annual</th><th>Monthly</th><th>Annual</th></tr></thead><tbody>'+
+  rows+'</tbody></table><p class="catalogue-print-footnote">'+esc(d.disclaimer)+'</p>'+
+  '<p class="catalogue-print-footnote">Source: '+esc(d.price_source)+' · '+esc(d.price_snapshot)+
+  ' · '+esc(d.pricing_status)+'. RRPs are from the master catalogue, never customer invoice selling prices.</p>';
+}
+async function printCatalogueSelection(){
+ const skus=[...catalogueSelection];
+ if(!skus.length)return;
+ const btn=$('printCatalogSelection');btn.disabled=true;btn.textContent='Preparing prices…';
+ try{
+  const data=await api('/api/catalog/print-selection',{method:'POST',body:JSON.stringify({skus})});
+  const sheet=$('catalogPrintSheet');
+  sheet.innerHTML=catalogPrintHtml(data);
+  sheet.classList.remove('hidden');
+  window.addEventListener('afterprint',()=>sheet.classList.add('hidden'),{once:true});
+  window.print();
+ }catch(e){toast(e.message,true)}
+ finally{updateCataloguePrintCount()}
+}
+
 function manualAdd(){
  $('modalTitle').textContent='Add a machine — no SKU needed';
  $('modalContent').innerHTML=`<div class="editor-help">Start by typing what you know: <b>make, model, description, or product code.</b> Choose a confirmed machine from the list, or add an unidentified machine for follow-up.</div>
@@ -818,6 +952,13 @@ function bind(){
  document.querySelector('.left-area').insertBefore(document.querySelector('.assets-panel'),$('quoteDetails'));
  $('staffHelp').onclick=quickHelp;$('quoteFind').addEventListener('input',()=>{clearTimeout(window.quoteFindTimer);window.quoteFindTimer=setTimeout(loadRegister,260)});$('quoteStatusFilter').onchange=loadRegister;
  $('newQuote').onclick=()=>newQuote();$('exportQuoteRegister').onclick=exportRegister;$('customer').addEventListener('input',()=>{clearTimeout(window.customerHintTimer);window.customerHintTimer=setTimeout(updateCustomerHints,280)});$('navBuilder').onclick=()=>showView('builder');$('navUsers').onclick=()=>showView('users');$('addStaffUser').onclick=addUserFromUI;$('refreshUsers').onclick=loadUsers;$('navRegister').onclick=()=>showView('register');$('navCatalogue').onclick=()=>showView('catalogue');$('navManager').onclick=()=>showView('manager');
+ $('catalogBrowseTab').onclick=()=>showView('catalogue');
+ $('catalogManageTab').onclick=()=>showView('manager');
+ $('printCatalogSelection').onclick=printCatalogueSelection;
+ $('clearCatalogSelection').onclick=()=>{
+  catalogueSelection.clear();updateCataloguePrintCount();
+  $('catalogResults').querySelectorAll('[data-catalog-select]').forEach(x=>x.checked=false);
+ };
  $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>{stageUploadFiles(e.target.files);e.target.value='';};$('browseButton').onclick=()=>$('filePicker').click();$('reviewInvoiceBatch').onclick=reviewStagedInvoices;$('clearUploadQueue').onclick=()=>{stagedUploads=[];invoiceReviewClear();renderStagedUploads();};$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('rrp2026Query').oninput=()=>{rrp2026Offset=0;clearTimeout(rrp2026Timer);rrp2026Timer=setTimeout(searchRrp2026,250)};

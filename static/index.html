@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse Fitness | SmartQuote</title><link rel="stylesheet" href="/static/style.css?v=v10-compact-contract-20261020"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse Fitness | SmartQuote</title><link rel="stylesheet" href="/static/style.css?v=v10-unified-catalogue-20261021"></head>
 <body>
 <div id="app">
  <aside class="sidebar">
@@ -7,9 +7,9 @@
   <div class="side-caption">WORKSPACE</div>
   <button class="nav selected" id="navBuilder"><span class="nav-icon">▧</span>Quote Builder <span class="nav-arrow">›</span></button>
   <button class="nav" id="navRegister"><span class="nav-icon">▤</span>Quote Register <span class="nav-arrow">›</span></button>
-  <button class="nav" id="navCatalogue"><span class="nav-icon">⌕</span>Equipment Catalogue <span class="nav-arrow">›</span></button>
+  <button class="nav" id="navCatalogue"><span class="nav-icon">⌕</span>Equipment &amp; Prices <span class="nav-arrow">›</span></button>
   <button class="nav" id="navUsers"><span class="nav-icon">♙</span>Staff Users <span class="nav-arrow">›</span></button>
-  <button class="nav" id="navManager"><span class="nav-icon">⚙</span>Master Price List <span class="nav-arrow">›</span></button>
+  <button class="nav" id="navManager" hidden aria-hidden="true" tabindex="-1"><span class="nav-icon">⚙</span>Master Price List <span class="nav-arrow">›</span></button>
   <div class="side-caption" style="margin-top:32px">GUIDANCE</div>
   <div class="sidebar-info"><div class="small-pill">SOURCE CONTROL</div><b>Source RRPs and traceable estimates</b><p>Unmapped equipment receives a visible calculated estimate. Missing prices and conflicting codes stay visible; valid priced machines can be quoted immediately.</p></div>
   <div class="sidebar-bottom"><div class="avatar">PF</div><div><strong>Pulse Fitness Aftersales</strong><small>Internal local prototype</small></div></div>
@@ -62,9 +62,20 @@
    <footer class="footline">Pulse Fitness SmartQuote · Prototype built against supplied Oct 2026 pricing sources · <b>Internal use only</b></footer>
   </div>
   <div id="registerView" class="hidden simple-view"><div class="inner-heading"><div class="eyebrow dark">WORKSPACE / QUOTES</div><h1>Quote register</h1><p>Local quotation register; saved PDFs are retained as immutable versions.</p></div><section class="panel"><div class="manager-toolbar"><label class="register-search-label">Find a quotation<input id="quoteFind" type="search" placeholder="Customer, site, quote number or contract ref" aria-label="Search saved quotations"></label><label class="register-search-label">Commercial status<select id="quoteStatusFilter"><option value="">All statuses</option><option value="Draft">Draft</option><option value="Sent externally">Sent externally</option><option value="Accepted">Accepted</option><option value="Declined">Declined</option><option value="Expired">Expired</option></select></label><button id="exportQuoteRegister" class="secondary-btn">↓ Export quote register CSV</button></div><div id="pipelineStats" class="manager-stats"></div></section><div class="panel" id="quotesList"></div></div>
+  <div id="usersView" class="hidden simple-view"><div class="inner-heading"><div class="eyebrow dark">ADMINISTRATION / TEAM</div><h1>Staff users</h1><p>Create staff logins, manage access, or reset passwords. Accessible to local SmartQuote administrators only.</p></div>
+   <section class="panel manager-panel"><h2>Add a staff user</h2><div class="form-grid"><label>Username<input id="newUsername" placeholder="e.g. claire.johnson" autocomplete="off"></label><label>Role<select id="newUserRole"><option value="coordinator">Contract coordinator</option><option value="manager">Pricing manager</option><option value="admin">Administrator</option></select></label><label>Initial password (12+ characters)<input id="newUserPassword" type="password" autocomplete="new-password"></label></div><button id="addStaffUser" class="primary-btn">Create user account</button><p class="editor-hint">Share passwords securely. These are local accounts in this installation, not Pulse-wide SSO. Admin can reset passwords below.</p></section>
+   <section class="panel manager-panel"><div class="panel-head"><h2>Existing users</h2><button id="refreshUsers" class="secondary-btn">↻ Refresh</button></div><div id="usersList"></div></section>
+  </div>
+  <div id="catalogueView" class="hidden simple-view">
+    <div class="inner-heading"><div class="eyebrow dark">PULSE EQUIPMENT / PRICES</div><h1>Equipment &amp; Prices</h1><p>One place to find a machine, see every recorded detail and compare Silver, Gold and Platinum contract costs.</p></div>
+    <div class="catalogue-tabs"><button id="catalogBrowseTab" type="button" class="catalogue-tab active">Browse equipment</button><button id="catalogManageTab" type="button" class="catalogue-tab hidden">Manage master prices</button></div>
+    <div id="catalogueBrowseArea"><section class="panel"><div class="catalogue-search-row"><label class="catalogue-search-box">Find equipment by code, model or description<input id="catalogSearch" placeholder="e.g. 305H-AEP, chest press, treadmill, storage rack…" class="large-input" autocomplete="off"></label><button id="printCatalogSelection" type="button" class="secondary-btn" disabled>Print selection (0)</button><button id="clearCatalogSelection" type="button" class="secondary-btn" disabled>Clear</button></div>
+      <p class="catalogue-helper">Select machines to print their RRP and monthly / annual Silver, Gold and Platinum contract prices. Select View details to see all associated catalogue values.</p>
+      <div id="catalogResults" class="results-list"><p class="editor-hint">Search for a machine to begin.</p></div>
+    </section></div>
   <div id="managerView" class="hidden simple-view">
-   <div class="inner-heading"><div class="eyebrow dark">CATALOGUE / DATA CONTROL</div><h1>Master price list manager</h1><p>Search and correct equipment, update RRPs, update maintenance prices and import replacement price lists. Changes are logged and draft quote pricing is refreshed. Previously generated PDFs remain unchanged.</p></div>
-   <section class="panel manager-panel"><div class="readiness-panel" id="readinessPanel" aria-live="polite"><strong>Checking catalogue and commercial status...</strong></div></section>
+   <div class="inner-heading"><div class="eyebrow dark">DATA CONTROL / AUTHORISED STAFF</div><h1>Manage equipment and prices</h1><p>Search and correct equipment, update RRPs, update maintenance prices and import replacement price lists. Changes are logged and draft quote pricing is refreshed. Previously generated PDFs remain unchanged.</p></div>
+   <details class="panel manager-panel diagnostics-fold"><summary>Source readiness and commercial diagnostics</summary><div class="readiness-panel" id="readinessPanel" aria-live="polite"><strong>Checking source records...</strong></div></details>
    <section class="panel manager-panel"><div class="manager-toolbar"><button class="primary-btn" id="managerNew">+ Create equipment</button><button class="secondary-btn" id="managerExport">↓ Export managed catalogue CSV</button></div>
     <div id="managerStats" class="manager-stats"></div><div class="editor-help">Automatic prices use the original Pulse source RRP, equipment category and rate group. <b>Calculated estimate</b> means the price has been derived from the RRP and standard category tariff. Editing is restricted to a signed-in manager or administrator. Production deployment still requires central SSO.</div>
     <div class="form-grid"><label>Find item code, machine or model<input id="managerSearch" class="large-input" placeholder="e.g. 867H, 260G-ACC, storage rack"></label></div><div id="managerResults" class="manager-results"></div></section>
@@ -102,14 +113,12 @@
    <section class="panel manager-panel"><div class="panel-head"><div><div class="eyebrow dark">REUSABLE KNOWLEDGE</div><h2>Reviewed equipment matching memory</h2><p>Save an exact physical machine identity when resolving a quote. Future matching imports will offer this as a suggestion, but will never automatically select it or approve its RRP.</p></div></div><div id="matchingMemoryList" class="manager-results"></div></section>
    </section><section class="panel manager-panel"><h3>Recent catalogue edits</h3><div id="managerHistory"></div></section>
   </div>
-  <div id="usersView" class="hidden simple-view"><div class="inner-heading"><div class="eyebrow dark">ADMINISTRATION / TEAM</div><h1>Staff users</h1><p>Create staff logins, manage access, or reset passwords. Accessible to local SmartQuote administrators only.</p></div>
-   <section class="panel manager-panel"><h2>Add a staff user</h2><div class="form-grid"><label>Username<input id="newUsername" placeholder="e.g. claire.johnson" autocomplete="off"></label><label>Role<select id="newUserRole"><option value="coordinator">Contract coordinator</option><option value="manager">Pricing manager</option><option value="admin">Administrator</option></select></label><label>Initial password (12+ characters)<input id="newUserPassword" type="password" autocomplete="new-password"></label></div><button id="addStaffUser" class="primary-btn">Create user account</button><p class="editor-hint">Share passwords securely. These are local accounts in this installation, not Pulse-wide SSO. Admin can reset passwords below.</p></section>
-   <section class="panel manager-panel"><div class="panel-head"><h2>Existing users</h2><button id="refreshUsers" class="secondary-btn">↻ Refresh</button></div><div id="usersList"></div></section>
+
   </div>
-  <div id="catalogueView" class="hidden simple-view"><div class="inner-heading"><div class="eyebrow dark">EQUIPMENT / SOURCE REGISTER</div><h1>Equipment catalogue</h1><p>Search by name, make, model or product code. View RRP, mapped rates and calculated monthly estimates for Silver, Gold and Platinum.</p></div><div class="panel"><input id="catalogSearch" placeholder="Try: rower, Concept2, 260G, treadmill, storage rack…" class="large-input"><div id="catalogResults" class="results-list"></div></div></div>
  </main>
 </div>
+<div id="catalogPrintSheet" class="catalog-print-sheet hidden" aria-label="Selected equipment price printout"></div>
 <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-card"><div class="modal-top"><div><div class="eyebrow dark">EQUIPMENT DETAILS</div><h2 id="modalTitle">Match equipment</h2></div><button class="close-modal" id="closeModal">✕</button></div><div id="modalContent"></div></div></div>
 <div id="toast" class="toast hidden" role="status"></div>
 <div id="loginGate" class="login-gate hidden"><form class="login-card" id="loginForm"><img src="/static/pulse_logo.png" alt="Pulse Fitness"><h2>Sign in to SmartQuote</h2><p>Use your local Pulse SmartQuote staff account. If this is the first launch, follow the setup instructions in README.</p><label>Username<input id="loginName" required autocomplete="username" placeholder="e.g. contracts.team"></label><label>Password<input id="loginPassword" required type="password" autocomplete="current-password"></label><button class="primary-btn" type="submit">Sign in</button><div id="loginError" role="alert"></div><small>Internal pilot · Not for use over public networks</small></form></div>
-<script src="/static/app.js?v=v10-compact-contract-20261020"></script></body></html>
+<script src="/static/app.js?v=v10-unified-catalogue-20261021"></script></body></html>

@@ -1001,6 +1001,52 @@ def catalog_search(q:str='',limit:int=20):
             'Calculated maintenance estimate — confirm category and eligibility' if option.get('price_origin')=='calculated-estimate'
             else 'Mapped maintenance rate — subject to source price approval')
     return {'results':results,'historical':eng.search_historical(q,limit=12),'basis':'Monthly equipment cost, 12-month equivalent, workbook standard tariff, pre-discount, ex VAT. Calculated estimates are shown and can be quoted without a separate review step.'}
+
+# Read-only combined Equipment & Prices view. Price-list administration remains
+# behind the existing manager-only /api/catalog/admin permission boundary.
+def _catalogue_detail(sku):
+    code=str(sku or '').strip().upper()
+    if not code or len(code)>100 or code not in eng.BY_SKU:
+        raise HTTPException(404,'Equipment code not found in the current master.')
+    raw=eng.BY_SKU[code]
+    option=live_catalogue_option(raw)
+    conflict=code in DUPLICATE_CODES
+    tiers={}
+    for tier in ('Silver','Gold','Platinum'):
+        price=None if conflict else price_line({'qty':1,'selected':option},'Standard',tier,0)
+        tiers[tier]={'monthly':round(price['unit']/12,2),'annual':price['unit'],
+                     'rrp':price['rrp'],'rule':price['rule']} if price else None
+    rule=next((dict(x) for x in PRICING['rates'] if x['group']==option.get('rate_group')),None)
+    console_rule=next((dict(x) for x in PRICING['console_rules'] if x['name']==option.get('console')),None)
+    return {'sku':code,'item':raw,'configuration':option,
+            'duplicate_sku':conflict,
+            'duplicate_source_rows':eng.ALL_SKUS.get(code,[]) if conflict else [],
+            'rate':rule,'console_rule':console_rule,'tiers':tiers,
+            'source':PRICING['source'],'source_snapshot':PRICING['source_snapshot'],
+            'pricing_status':PRICING.get('pricing_status','Provisional'),
+            'annual_basis':'12-month, standard tariff, per machine, 0% discount, ex VAT',
+            'editing_requires_manager':True}
+
+@app.get('/api/catalog/item/{sku:path}')
+def catalog_item_details(sku:str):
+    return _catalogue_detail(sku)
+
+@app.post('/api/catalog/print-selection')
+async def catalog_print_selection(request:Request):
+    payload=await request.json()
+    if not isinstance(payload,dict) or not isinstance(payload.get('skus'),list):
+        raise HTTPException(400,'Choose one or more equipment codes to print.')
+    submitted=payload['skus']
+    if not submitted or len(submitted)>75:
+        raise HTTPException(400,'Select between 1 and 75 machines to print.')
+    if any(not isinstance(code,str) or len(code)>100 for code in submitted):
+        raise HTTPException(400,'Invalid equipment code in selection.')
+    unique=list(dict.fromkeys(code.strip().upper() for code in submitted))
+    return {'items':[_catalogue_detail(code) for code in unique],
+            'price_source':PRICING['source'],'price_snapshot':PRICING['source_snapshot'],
+            'pricing_status':PRICING.get('pricing_status','Provisional'),
+            'disclaimer':'Internal guide: monthly and annual per-machine Silver / Gold / Platinum contract costs, ex VAT, 0% discount. Subject to tariff/commercial approval. Not a customer quotation.'}
+
 @app.post('/api/quotes/{id}/approve')
 async def legacy_approval(id:str,request:Request):
  # Removed in V5: no manual review step is needed to quote a valid, priced machine.

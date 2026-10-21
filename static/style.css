@@ -265,3 +265,59 @@ button:disabled{cursor:not-allowed;opacity:.6}
 
 /* Neutral, transparent status: calculated from a dated RRP, not commercially approved. */
 .status.rrp-calculated{background:#eaf4fb;color:#245b80;border-color:#cce3f0}
+
+/* Unified Equipment & Prices: one coordinator destination, manager tools inside. */
+#navManager[hidden]{display:none!important}
+.catalogue-tabs{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap}
+.catalogue-tab{font:inherit;font-size:13px;font-weight:750;cursor:pointer;padding:12px 18px;border:1px solid #d3e2ea;border-radius:9px;background:#fff;color:#395b70}
+.catalogue-tab.active{color:#115b86;border-color:#95cee7;background:#ecf7fc}
+.catalogue-search-row{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.catalogue-search-box{flex:1;min-width:240px;font-size:12px;font-weight:750;color:#385b70}
+.catalogue-search-box input{margin-top:7px}
+.catalogue-search-row .secondary-btn{white-space:nowrap}
+.catalogue-helper{font-size:12px;color:#687f90;margin:12px 0 14px}
+.catalogue-result-head{display:flex;gap:12px;align-items:start;flex-wrap:wrap}
+.catalogue-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+.catalogue-actions .secondary-btn{font-size:11px;padding:8px 12px}
+.catalogue-select{display:flex;gap:5px;align-items:center;font-weight:600;font-size:11px;cursor:pointer}
+.catalogue-select input{width:16px;height:16px;accent-color:#167ead}
+.catalogue-history{border:1px solid #d9e7ef;border-radius:10px;padding:12px 14px;margin-top:13px;background:#f9fcfe}
+.catalogue-history summary{cursor:pointer;color:#26546d;font-weight:750}
+.catalogue-history h4{font-size:13px;margin:16px 0 7px}
+.catalogue-detail-intro h3{font-size:18px;margin:0 0 5px;color:#183b52}
+.catalogue-detail-intro p{font-size:12px;color:#6f8695;margin:0 0 15px}
+.catalogue-key-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.catalogue-key-fields>div{border:1px solid #dbe6ec;border-radius:8px;padding:12px}
+.catalogue-key-fields span{display:block;font-size:11px;color:#688091}
+.catalogue-key-fields b{display:block;word-break:break-word;margin-top:6px;font-size:13px}
+.catalogue-detail-tiers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.catalogue-tier-card{background:#f6faff;border:1px solid #d6e8f2;padding:14px 10px;border-radius:10px}
+.catalogue-tier-card strong{display:block;font-size:12px;color:#325b70}
+.catalogue-tier-card b{display:block;font-size:21px;margin-top:5px;color:#183d56}
+.catalogue-tier-card small{display:block;font-size:10px;color:#678196}
+.catalogue-tier-card span{display:block;font-size:12px;color:#355a70;margin-top:8px}
+.catalogue-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.catalogue-field{background:#fff;border-bottom:1px solid #edf0f3;padding:6px 4px;min-width:0}
+.catalogue-field span{display:block;color:#668195;font-size:11px;text-transform:capitalize}
+.catalogue-field b{display:block;color:#244a63;font-size:12px;overflow-wrap:anywhere}
+.diagnostics-fold{padding:12px 18px}
+.diagnostics-fold summary{font-size:12px;color:#678095;cursor:pointer}
+.diagnostics-fold .readiness-panel{margin-top:12px}
+@media(max-width:720px){.catalogue-key-fields,.catalogue-fields{grid-template-columns:1fr}.catalogue-detail-tiers{grid-template-columns:1fr}.catalogue-search-row{align-items:stretch}}
+/* Printing selected equipment does not change stored quotations or issue PDFs. */
+.catalog-print-sheet{display:none}
+@media print{
+ @page{size:A4 landscape;margin:12mm}
+ body{background:#fff!important;color:#111!important}
+ body>#app,body>#modal,body>#toast,body>#loginGate{display:none!important}
+ #catalogPrintSheet{display:block!important;color:#111;font:10px Arial,sans-serif}
+ #catalogPrintSheet h1{font-size:18px;margin:0 0 8px}
+ #catalogPrintSheet p{margin:6px 0 12px}
+ .catalogue-print-table{width:100%;border-collapse:collapse;table-layout:fixed}
+ .catalogue-print-table th,.catalogue-print-table td{border:1px solid #aaa;padding:7px 4px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+ .catalogue-print-table th{background:#eee!important;color:#111}
+ .catalogue-print-table th:first-child{width:8%}
+ .catalogue-print-table th:nth-child(2){width:22%}
+ .catalogue-print-table tbody tr{break-inside:avoid}
+ .catalogue-print-footnote{font-size:9px;margin-top:12px;line-height:1.4}
+}
