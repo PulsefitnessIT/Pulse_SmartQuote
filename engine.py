@@ -12,6 +12,8 @@ from asset_intelligence import normalize_asset, grouped_assets
 from smart_candidates import family_code, suggest as suggest_review_candidates
 from staff_price_guides import guide as staff_guide
 from contract_pricing_preview import draft_reference as staff_draft_reference, source_sku_reference
+import sage_price_source as sage
+from rrp_reconciliation import source as master_source
 
 ROOT=Path(__file__).parent
 CAT=json.loads((ROOT/'data/catalog.json').read_text())
@@ -596,6 +598,70 @@ def price_line(asset,level,tier,discount):
  minimum=(float(s['rrp'])*rate['minimum']*float(console['multiplier'])+float(console['uplift'])+rate['uplift'])*PRICING['tiers'][tier]*qty
  return {'unit':unit,'annual':money(line),'minimum':money(minimum),'base_unit':money(base),'rrp':money(s['rrp']),'qty':qty,'rate':rate.get(level.lower(),rate['standard']),'basis':s.get('price_origin','mapped'),'rule':s.get('pricing_rule','Source tariff')}
 
+@lru_cache(maxsize=1)
+def _master_rrp_status():
+ """Presence of an exact Master SKU matters even where the configuration is unverified."""
+ grouped={}
+ for row in master_source().get('rows',[]):
+  code=upper(row.get('sku'))
+  if code:grouped.setdefault(code,[]).append(row)
+ statuses={}
+ for code,rows in grouped.items():
+  prices=set()
+  for row in rows:
+   try:
+    p=float(row.get('rrp') or 0)
+    if p>0:prices.add(round(p,2))
+   except (TypeError,ValueError):pass
+  statuses[code]='conflict' if len(prices)>1 else 'current' if prices else 'missing'
+ return statuses
+
+def _sage_compatible(asset,record):
+ """Require an exact original SKU, permitted coverage, and no explicit console contradiction."""
+ code=upper(asset.get('code'))
+ if not code or code!=record['sku']:return False
+ if asset.get('match_type')=='Conflicting duplicate SKU' or asset.get('qty_issue'):return False
+ chosen=asset.get('selected') or {}
+ if chosen.get('eligible')=='No':return False
+ if chosen.get('sku') and upper(chosen['sku'])!=code:return False
+ text=neat(asset.get('console') or asset.get('source_description') or asset.get('name')).lower()
+ src=neat(record.get('name')).lower()
+ for marker in ('18.5','10.1'):
+  if marker in text and ('console' in text or 'touchscreen' in text):
+   if any(other in src for other in ('18.5','10.1') if other!=marker):return False
+ if 'tactile' in text and 'touchscreen' in src:return False
+ if 'touchscreen' in text and 'tactile key' in src:return False
+ return True
+
+def _sage_quote_price(asset,level,tier,discount):
+ code=upper(asset.get('code'))
+ if not code or _master_rrp_status().get(code) in ('current','conflict'):return None
+ record=sage.lookup(code)
+ if not record or not _sage_compatible(asset,record):return None
+ chosen=asset.get('selected') or {}
+ group=chosen.get('rate_group')
+ if not group or group=='Manual Review':
+  group,_,_=infer_rate_group({'model':asset.get('model') or code.split('-')[0],
+   'name':record['name'],'group':record['group'],'category':record['group']})
+ if 'stepmill' in record['name'].lower() or 'stair climber' in record['name'].lower():group='Stepmill'
+ if record['group']=='Non Pulse Equipment':group='Concept2 / Third Party'
+ if group not in RATES or group=='Manual Review':return None
+ temporary={**chosen,'sku':code,'rrp':record['sales_price'],
+  'model':asset.get('model') or code.split('-')[0],'name':record['name'],
+  'console':chosen.get('console') or 'No Console / N/A',
+  'rate_group':group,'eligible':'Estimate - approval required',
+  'price_origin':'sage-static-fallback','approved':'Not approved',
+  'pricing_rule':'Exact Sage SKU Sales Price fallback — current Master RRP unavailable'}
+ p=price_line({**asset,'selected':temporary},level,tier,discount)
+ if p:
+  p.update({'basis':'sage-static-fallback','review_required':False,
+   'rrp_source':record['source'],'rrp_source_date':record['source_date'],
+   'rrp_review_due':record['review_due'],'rrp_review_overdue':record['stale'],
+   'sage_snapshot_id':record['snapshot_id'],'sage_source_group':record['group'],
+   'reference_sku':code,'tariff_status':'pending-commercial-approval',
+   'source_price_field':'Sales Price (Sage export; not verified list RRP)'})
+ return p
+
 def calc_quote(q):
  """Fast coordinator flow: accurate, complete lines are immediately quotable.
 
@@ -607,7 +673,7 @@ def calc_quote(q):
  if tier not in PRICING['tiers']:tier='Gold'
  discount=max(0,min(100,discount))
  term=max(1,min(5,int(q.get('term') or 1)))
- summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[],'pricing_exceptions':[],'source_rrp_reconciled_rows':0,'automatic_rrp_rows':0,'tariff_approval_required':False}
+ summary={'rows':0,'units':0,'priced_rows':0,'excluded_rows':0,'annual':0,'monthly':0,'term_total':0,'issues':[],'advisories':[],'estimated_rows':0,'guide_rows':0,'ready':False,'tier':tier,'level':level,'discount':discount,'term':term,'lines':[],'pricing_exceptions':[],'source_rrp_reconciled_rows':0,'automatic_rrp_rows':0,'tariff_approval_required':False,'sage_fallback_rows':0,'sage_review_overdue_rows':0}
  rows=q.get('assets',[]);summary['rows']=len(rows)
  for a in rows:
   if a.get('excluded'):
@@ -620,10 +686,14 @@ def calc_quote(q):
   if a.get('qty_issue'):
    summary['issues'].append(f"Row {a.get('source_row','?')}: {a['qty_issue']}")
   price=price_line(a,level,tier,discount)
+  # Missing exact current Master RRP: use the dated Sage snapshot without coordinator re-selection.
+  if not a.get('excluded') and a.get('manual_annual_unit') in (None,''):
+   fallback=_sage_quote_price(a,level,tier,discount)
+   if fallback:price=fallback
   # A dated source RRP discrepancy must never silently keep an older price.
   # Keep the installed SKU, source invoice, original live catalogue and PDFs intact.
   # Reprice ONLY the draft invoice line; commercial approval is still required.
-  if (price and a.get('invoice_ref') and a.get('manual_annual_unit') in (None,'')
+  if (price and price.get('basis')!='sage-static-fallback' and a.get('invoice_ref') and a.get('manual_annual_unit') in (None,'')
       and a.get('match_type')!='Conflicting duplicate SKU' and price.get('rrp')
       and (a.get('selected') or {}).get('eligible')!='No'):
    current=source_sku_reference(a)
@@ -679,6 +749,9 @@ def calc_quote(q):
     summary['source_rrp_reconciled_rows']+=1
    if price.get('basis')=='source-rrp-calculated':
     summary['automatic_rrp_rows']+=1
+   if price.get('basis')=='sage-static-fallback':
+    summary['sage_fallback_rows']+=1
+    if price.get('rrp_review_overdue'):summary['sage_review_overdue_rows']+=1
   else:
    sku=upper(a.get('code') or a.get('model'))
    if a.get('qty_issue'):
@@ -700,6 +773,8 @@ def calc_quote(q):
     summary['issues'].append(f"Row {a.get('source_row','?')}: enter a source/reference for the manual rate")
    if not neat(a.get('name') or a.get('display_name')) or not (neat(a.get('code')) or neat(a.get('model'))):
     summary['issues'].append(f"Row {a.get('source_row','?')}: manual rate needs a description and code/model")
+  elif price and price.get('basis')=='sage-static-fallback':
+   pass  # Exact SKU: no coordinator review. Dated source is retained on the price.
   elif price and price.get('basis')=='source-rrp-calculated':
    # No repetitive per-machine confirmation for a unique current source SKU.
    # Tariffs are not approved by this calculation; one quote-level gate below.
@@ -748,6 +823,11 @@ def calc_quote(q):
   summary['issues'].append(
    f"Commercial tariff sign-off required for {summary['automatic_rrp_rows']} automatically "
    "calculated RRP equipment lines; no machine-by-machine re-selection needed.")
+ if summary['sage_fallback_rows'] and str(PRICING.get('pricing_status','')).lower().startswith('provisional') and not summary['tariff_approval_required']:
+  summary['tariff_approval_required']=True
+  summary['issues'].append('Commercial tariff sign-off required for Sage-priced equipment; no per-machine confirmation is needed.')
+ if summary['sage_review_overdue_rows']:
+  summary['issues'].append(f"Sage price snapshot is more than 12 months old for {summary['sage_review_overdue_rows']} quoted lines. Pricing manager must upload a refreshed price list.")
  if not neat(q.get('customer')) or not neat(q.get('site')):summary['issues'].append('Enter the customer and site.')
  visits=int(q.get('visits',1))
  if tier=='Silver' and visits!=0:summary['issues'].append('Silver does not include planned maintenance; select 0 PPM visits.')

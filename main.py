@@ -13,6 +13,7 @@ from import_quality import preview as import_preflight
 import bulk_review
 import staff_price_guides as quick_guide
 import security
+import sage_price_source as sage
 from catalogue_readiness import evaluate as evaluate_readiness
 from asset_intelligence import grouped_assets
 from startup_manager import instance_id as installation_instance_id
@@ -64,6 +65,7 @@ def signout(request:Request):
     return {'ok':True}
 
 admin.apply_stored()
+sage.seed_from_local()  # Optional first-launch Windows source seed; no coordinator click.
 app.mount('/static',StaticFiles(directory=str(ROOT/'static')),name='static')
 DB=ROOT/'smartquote_local.db'
 _lock=threading.RLock()
@@ -1209,6 +1211,21 @@ def rrp_2026_equipment_search(q:str='',limit:int=12):
 @app.get('/api/catalog/admin/readiness')
 def catalog_readiness():
     return evaluate_readiness(ROOT, PRICING)
+
+@app.get('/api/catalog/admin/sage/status')
+def sage_price_status():
+ return sage.status()
+
+@app.post('/api/catalog/admin/sage/import')
+async def sage_price_import(request:Request):
+ data=await request.json()
+ if not isinstance(data,dict):raise HTTPException(400,'Supply a dated Sage price list.')
+ try:
+  payload=base64.b64decode(data.get('content_base64',''),validate=True)
+  with _lock:
+   return sage.install(str(data.get('filename','')),payload,str(data.get('source_date','')),actor(request)['username'])
+ except (ValueError,TypeError) as ex:
+  raise HTTPException(400,str(ex))
 
 @app.get('/api/catalog/admin/info')
 def catalog_info():

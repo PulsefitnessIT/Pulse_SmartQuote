@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse Fitness | SmartQuote</title><link rel="stylesheet" href="/static/style.css?v=v10-unified-catalogue-20261021"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pulse Fitness | SmartQuote</title><link rel="stylesheet" href="/static/style.css?v=v10-sage-fallback-20261023"></head>
 <body>
 <div id="app">
  <aside class="sidebar">
@@ -86,6 +86,13 @@
     <label class="checkline"><input id="masterAcknowledged" type="checkbox"> I have checked the catalogue changes and understand they will update open quote prices.</label>
     <button id="managerApply" class="primary-btn" disabled>2. Apply reviewed changes</button>
    <section class="panel manager-panel"><div class="panel-head"><div><div class="eyebrow dark">EQUIPMENT INTELLIGENCE</div><h2>Equipment still needing a match or price</h2><p>Priority worklist across open draft quotations. Sorted by number of physical machines, not alphabetical SKU.</p></div><button id="downloadAllGaps" class="secondary-btn" type="button">↓ Export all missing equipment</button></div><div class="manager-stats" id="matchingGapStats"></div><div id="matchingGapList" class="manager-results"></div></section>
+   <section class="panel manager-panel" aria-labelledby="sageFallbackHeading">
+    <div class="panel-head"><div><div class="eyebrow dark">DATED SAGE SOURCE / MANAGER ONLY</div><h2 id="sageFallbackHeading">Sage price fallback</h2><p>When an exact equipment code has no usable Master RRP, SmartQuote uses the latest dated Sage Sales Price reference automatically. This is a static fallback, not an independently verified list RRP. Coordinators do not select it.</p></div></div>
+    <div id="sageFallbackStatus" class="manager-stats" aria-live="polite">Checking dated Sage source...</div>
+    <div class="form-grid"><label>New Sage Sales Price export (.xlsx or .csv)<input id="sagePriceUpload" type="file" accept=".xlsx,.csv"></label><label>Effective export date<input id="sagePriceDate" type="date" value="2026-10-23"></label></div>
+    <button class="secondary-btn" id="sagePriceImport" type="button">Update Sage reference (manager)</button>
+    <p class="editor-hint">All price snapshots remain in the local database for audit. A refreshed export is due 12 months after the source date. No historical quote or issued PDF is overwritten.</p>
+   </section>
    <section class="panel manager-panel" aria-labelledby="rrp2026Heading">
     <div class="panel-head"><div><div class="eyebrow dark">2026 PRICE LIST / MANAGER REVIEW</div><h2 id="rrp2026Heading">RRP reconciliation workbench</h2><p>Compare the 24 August 2026 source List Price against SmartQuote's existing RRP, including console variants, model families and original worksheet rows. <b>Review only — no prices are updated here.</b></p></div><button class="secondary-btn" id="downloadRrp2026" type="button">↓ Full discrepancy CSV</button></div>
     <div class="manager-stats" id="rrp2026Stats" aria-live="polite"></div>
@@ -121,4 +128,4 @@
 <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-card"><div class="modal-top"><div><div class="eyebrow dark">EQUIPMENT DETAILS</div><h2 id="modalTitle">Match equipment</h2></div><button class="close-modal" id="closeModal">✕</button></div><div id="modalContent"></div></div></div>
 <div id="toast" class="toast hidden" role="status"></div>
 <div id="loginGate" class="login-gate hidden"><form class="login-card" id="loginForm"><img src="/static/pulse_logo.png" alt="Pulse Fitness"><h2>Sign in to SmartQuote</h2><p>Use your local Pulse SmartQuote staff account. If this is the first launch, follow the setup instructions in README.</p><label>Username<input id="loginName" required autocomplete="username" placeholder="e.g. contracts.team"></label><label>Password<input id="loginPassword" required type="password" autocomplete="current-password"></label><button class="primary-btn" type="submit">Sign in</button><div id="loginError" role="alert"></div><small>Internal pilot · Not for use over public networks</small></form></div>
-<script src="/static/app.js?v=v10-unified-catalogue-20261021"></script></body></html>
+<script src="/static/app.js?v=v10-sage-fallback-20261023"></script></body></html>

@@ -324,3 +324,5 @@ button:disabled{cursor:not-allowed;opacity:.6}
 
 .catalogue-machine-link{cursor:pointer;color:#164b6d;text-decoration:underline;text-decoration-color:#afc9d8;text-underline-offset:3px}
 .catalogue-machine-link:focus-visible{outline:2px solid #1a83bc;outline-offset:4px;border-radius:3px}
+
+.status.sage-fallback{background:#eef6fb;color:#2b6482;border-color:#d7e6ed}

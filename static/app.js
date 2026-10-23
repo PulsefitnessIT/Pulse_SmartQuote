@@ -112,8 +112,9 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  if(coverage){
   const total=Math.max(0,s.rows-s.excluded_rows);
   const mismatched=s.source_rrp_reconciled_rows||0;
+  const sageCount=s.sage_fallback_rows||0;
   coverage.classList.toggle('hidden',!total);
-  if(total)coverage.innerHTML=`<b>${s.priced_rows} of ${total} included equipment lines have a numerical price</b>${exceptions.length?` · <strong>${exceptions.length} require RRP/scope review</strong>`:' · No missing prices'}${mismatched?` · ${mismatched} stale catalogue RRPs replaced with provisional 2026 source figures`:''}${exceptions.length?`<div class="coverage-exceptions">${exceptions.map(x=>`<span title="${esc(x.reason)}"><b>${esc(x.code||'Unknown')}</b> — ${esc(x.reason)}</span>`).join('')}</div>`:''}<small>${s.automatic_rrp_rows||0} lines priced automatically from the exact 2026 RRP source. Commercial tariff approval is separate and required before customer issue.</small>`;
+  if(total)coverage.innerHTML=`<b>${s.priced_rows} of ${total} included equipment lines have a numerical price</b>${exceptions.length?` · <strong>${exceptions.length} require RRP/scope review</strong>`:' · No missing prices'}${mismatched?` · ${mismatched} stale catalogue RRPs replaced with provisional 2026 source figures`:''}${sageCount?` · ${sageCount} priced from dated Sage fallback`:''}${exceptions.length?`<div class="coverage-exceptions">${exceptions.map(x=>`<span title="${esc(x.reason)}"><b>${esc(x.code||'Unknown')}</b> — ${esc(x.reason)}</span>`).join('')}</div>`:''}<small>${s.automatic_rrp_rows||0} exact Master RRP calculations; ${sageCount} dated Sage Sales Price fallbacks. Company-wide tariff approval is separate.</small>`;
  }
  $('reviewIssuesCount').textContent=todo.length;
  $('reviewAll').classList.toggle('active',state.filter==='all');$('reviewIssues').classList.toggle('active',state.filter==='issues');
@@ -126,15 +127,15 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
   const guideRow=s.lines.find(line=>line.id===a.id);
   const guide=guideRow?.guide;
   const guideText=guide?guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit):money(guide.min_monthly_unit)+'–'+money(guide.max_monthly_unit):'';
-  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'RRP review':pr.basis==='source-rrp-calculated'?'RRP calculated':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
-  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='source-rrp-calculated'?'rrp-calculated':(pr.review_required===true)||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
+  const label=a.excluded?'Excluded':a.qty_issue?'Check quantity':!pr?'RRP review':pr.basis==='sage-static-fallback'?'Sage fallback':pr.basis==='source-rrp-calculated'?'RRP calculated':pr.basis==='staff-guided-estimate'?'Draft – review':pr.basis==='historic-reference'?'Historic RRP':a.manual_annual_unit!=null?'Manual rate':selected?.price_origin==='historic-family-estimate'?'Family estimate':selected?.price_origin==='calculated-estimate'?'Calculated':'Priced';
+  const cls=a.excluded?'':a.qty_issue?'bad':!pr?'bad':pr.basis==='sage-static-fallback'?'sage-fallback':pr.basis==='source-rrp-calculated'?'rrp-calculated':(pr.review_required===true)||['calculated-estimate','historic-family-estimate'].includes(selected?.price_origin)?'warning':'ok';
   const identifier=a.code||a.model||selected?.model||'Model not supplied';
   const name=a.display_name||a.name||selected?.name||'Equipment description not supplied';
   const visibleName=compactMachineDescription(name);
   const serials=(g.serials||[]).filter(Boolean);
   const serialText=serials.length?serials.join(', '):'Not provided';
   const shortPrice=a.excluded?'—':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.unit/12):money(pr.unit/12)):guide?`Guide ${guideText}`:'TBC';
-  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b title="${esc(name)}">${esc(visibleName)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='source-rrp-calculated'?'Source RRP · tariff sign-off at quote level':pr?.basis==='staff-guided-estimate'?'Source RRP · configuration review':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
+  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b title="${esc(name)}">${esc(visibleName)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='sage-static-fallback'?`Sage ${esc(pr.rrp_source_date)} · review ${esc(pr.rrp_review_due)}`:pr?.basis==='source-rrp-calculated'?'Source RRP · tariff sign-off at quote level':pr?.basis==='staff-guided-estimate'?'Source RRP · configuration review':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
  }).join(''):'<tr><td colspan="6" class="empty-table">'+(state.filter==='issues'?'All included equipment has a price. Choose All equipment or generate your PDF.':'Drop in an asset list or try the sample import to begin.')+'</td></tr>';
  document.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>review(b.dataset.review));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeAsset(b.dataset.delete));
  let matched=q.assets.filter(a=>a.selected&&!a.excluded).length,excluded=q.assets.filter(a=>a.excluded).length;
@@ -974,6 +975,7 @@ function bind(){
  $('downloadRrp2026').onclick=downloadRrp2026;
  $('hybridPropose').onclick=proposeHybridRrp;
  $('managerNew').onclick=()=>editCatalogue(null);$('managerExport').onclick=()=>window.location.href='/api/catalog/admin/export.csv';
+ $('sagePriceImport').onclick=uploadSagePrice;
  $('managerPreview').onclick=previewMaster;$('managerApply').onclick=applyMaster;$('downloadAllGaps').onclick=downloadAllGaps;
  const z=$('dropzone');z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag')});z.addEventListener('dragleave',()=>z.classList.remove('drag'));z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag');stageUploadFiles(e.dataTransfer.files)});
 }
@@ -1023,10 +1025,39 @@ async function showRrp2026Family(model){
 async function downloadRrp2026(){
  try{const response=await fetch('/api/catalog/admin/rrp-2026/reconciliation.csv',{headers:state.token?{'Authorization':'Bearer '+state.token}:{}});if(!response.ok)throw Error('Export unavailable');const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download='SmartQuote_2026_RRP_Reconciliation_Review.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),16000)}catch(e){toast(e.message,true)}
 }
+async function showSagePriceStatus(){
+ const d=await api('/api/catalog/admin/sage/status');
+ const pane=$('sageFallbackStatus');
+ if(!d.loaded){pane.textContent='No Sage list installed yet. A pricing manager can upload it once for automatic fallback on every quote.';return}
+ const due=d.days_until_review<=0?'DUE NOW':d.review_due;
+ pane.innerHTML='<div><b>'+Number(d.usable_rows).toLocaleString()+'</b><small>Sage-priced equipment codes</small></div>'+
+  '<div><b>'+esc(d.source_date)+'</b><small>Export date</small></div>'+
+  '<div><b>'+esc(due)+'</b><small>Annual review</small></div>'+
+  '<div><b>'+esc(d.imported_by)+'</b><small>Refreshed by</small></div>';
+}
+async function uploadSagePrice(){
+ try{
+  const file=$('sagePriceUpload').files?.[0];
+  if(!file)throw new Error('Choose the Sage .xlsx or .csv export first.');
+  if(file.size>25*1024*1024)throw new Error('Sage export cannot exceed 25 MB.');
+  const date=$('sagePriceDate').value;
+  if(!date)throw new Error('Enter the Sage export date.');
+  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
+  for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+  const btn=$('sagePriceImport');btn.disabled=true;btn.textContent='Importing the dated Sage list…';
+  try{
+   const d=await api('/api/catalog/admin/sage/import',{method:'POST',body:JSON.stringify({filename:file.name,source_date:date,content_base64:btoa(binary)})});
+   toast(d.unchanged?'Sage export already installed.':d.usable_rows+' Sage machine prices enabled for automatic fallback.');
+   await showSagePriceStatus();
+   if(state.quote){apply(await api('/api/quotes/'+state.quote.id));render()}
+  }finally{btn.disabled=false;btn.textContent='Update Sage reference (manager)'}
+ }catch(e){toast(e.message,true)}
+}
 async function loadManager(){
  try{
   const [info,audit,readiness,gaps,memoryRules,legacyRules]=await Promise.all([api('/api/catalog/admin/info'),api('/api/catalog/admin/audit'),api('/api/catalog/admin/readiness'),api('/api/catalog/admin/matching-gaps'),api('/api/catalog/admin/matching-memory'),api('/api/catalog/admin/hybrid-rrp')]);
-  const archive=readiness.historical;
+  await showSagePriceStatus();
+ const archive=readiness.historical;
   $('readinessPanel').innerHTML=`<div class="readiness-heading"><div><b>V10 archive & commercial readiness</b><p>${archive.unique_skus.toLocaleString()} historical SKUs · ${archive.alias_codes.toLocaleString()} old codes · ${archive.source_years.join(', ')||'No sources loaded'}</p></div><span class="readiness-status ${readiness.automated_preflight_passes?'ready':'hold'}">${readiness.automated_preflight_passes?'Automated checks passed':'Pilot — review required'}</span></div><ul>${readiness.warnings.map(w=>`<li>${esc(w)}</li>`).join('')||'<li>Automated data checks passed. Manual quote/PDF sign-off is still required.</li>'}</ul><small>${esc(readiness.notice)}</small>`;
   $('managerStats').innerHTML=`<div><b>${info.rows.toLocaleString()}</b><small>Catalogue records</small></div><div><b>${info.unique_skus.toLocaleString()}</b><small>Unique item codes</small></div><div><b>${info.estimate_rows}</b><small>Calculated estimates</small></div><div><b>${info.duplicate_sku_count}</b><small>Conflicting item codes</small></div>`;
   const c=gaps.counts;
