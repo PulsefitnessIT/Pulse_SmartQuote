@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection_issues,BY_SKU,BY_KEY,DUPLICATE_CODES,CAT,CONFIG,sku_option,config_option,search_products,price_line,decorate_option,suggest_unknown,live_catalogue_option
 from quote_pdf import create_quote_pdf
+from contracts_os_transfer import from_accepted_pdf_snapshot
 from staged_contracts import valid_contract,parse_date
 from agreement_import import read_agreement_pdf
 from invoice_import import read_invoice_pdf, PLACEHOLDER_SERIALS
@@ -1383,6 +1384,32 @@ def issue_pdf(id:str,request:Request):
     code=re.sub(r'[^a-zA-Z0-9-]','',q['quote_no'])
     suffix='PILOT' if pilot else 'QUOTE'
     return Response(content,media_type='application/pdf',headers={'Content-Disposition':f'attachment; filename="Pulse_Fitness_{code}_v{nextversion}_{suffix}.pdf"','X-Quote-Version':str(nextversion),'X-PDF-SHA256':digest})
+
+@app.get('/api/quotes/{id}/contracts-os-handoff')
+def export_for_contracts_os(id:str,request:Request):
+    """Accepted + PDF archived; local JSON handoff only, not a Sage/Sicon write."""
+    original=getq(id)
+    if original.get('pipeline_status')!='Accepted':
+        raise HTTPException(409,'Record customer acceptance before exporting to Contracts OS.')
+    with _lock:
+        c=conn()
+        archive=c.execute('SELECT version,payload,pdf_sha256,status FROM quote_versions WHERE quote_id=? ORDER BY version DESC LIMIT 1',(id,)).fetchone()
+        c.close()
+    if not archive:
+        raise HTTPException(409,'Create and save a quotation PDF before transferring the accepted quote.')
+    snapshot=json.loads(archive['payload'])
+    # Pricing must not be recomputed from a different live catalogue unnoticed.
+    if snapshot.get('catalogue_revision')!=admin.revision():
+        raise HTTPException(409,'The approved RRP register has changed since the saved PDF. Reconcile the signed quotation before handover.')
+    summary=calc_quote(snapshot)
+    try:
+        payload=from_accepted_pdf_snapshot(snapshot,summary,archive['version'],archive['pdf_sha256'],
+                pilot_snapshot=archive['status']!='Issued' or os.getenv('SMARTQUOTE_LIVE_APPROVED')!='1')
+    except (ValueError,KeyError,TypeError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    record_event(id,actor(request)['username'],'CONTRACTS_OS_EXPORT',f"Saved PDF version {archive['version']}; read-only JSON handoff")
+    filename=re.sub(r'[^A-Za-z0-9_-]','',str(snapshot.get('quote_no') or 'Quote'))
+    return JSONResponse(payload,headers={'Cache-Control':'no-store','Content-Disposition':f'attachment; filename="SmartQuote_{filename}_ContractsOS.json"'})
 
 @app.get('/api/quotes/{id}/versions')
 def quote_versions(id:str):
