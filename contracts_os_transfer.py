@@ -52,6 +52,7 @@ def from_accepted_pdf_snapshot(q,summary,version,pdf_sha256,*,pilot_snapshot=Fal
             "item_code":sku.upper(),
             "description":str(asset.get("name") or asset.get("source_description") or ""),
             "model":str(asset.get("model") or ""),
+            "make":str(asset.get("make") or ""),
             "quantity":qty,
             "serial_numbers":serials,
             "cover_start":str(asset.get("cover_start") or q.get("contract_start") or ""),
