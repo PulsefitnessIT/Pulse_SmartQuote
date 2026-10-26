@@ -1358,6 +1358,9 @@ def issue_pdf(id:str,request:Request):
     snap['issued_at']=datetime.date.today().isoformat()
     snap['pilot_only']=pilot
     snap['issued_by']=who
+    # Freeze exact numeric quote values with the PDF, so future RRP/tariff edits
+    # cannot silently change equipment charges sent to Contracts OS.
+    snap['issued_quote_values']=json.loads(json.dumps(status))
     def fingerprint(x):
         # Skip operational timestamps and derived metadata; retain all commercial inputs.
         return {k:v for k,v in x.items() if k not in ('updated','status','pricing_approved','line_reviews_approved','approver','approval_note','issued_by')}
@@ -1398,10 +1401,11 @@ def export_for_contracts_os(id:str,request:Request):
     if not archive:
         raise HTTPException(409,'Create and save a quotation PDF before transferring the accepted quote.')
     snapshot=json.loads(archive['payload'])
-    # Pricing must not be recomputed from a different live catalogue unnoticed.
-    if snapshot.get('catalogue_revision')!=admin.revision():
-        raise HTTPException(409,'The approved RRP register has changed since the saved PDF. Reconcile the signed quotation before handover.')
-    summary=calc_quote(snapshot)
+    # Old issued PDFs remain immutable. Their unrecorded line values cannot be
+    # independently reconstructed once the tariff changes, so do not guess.
+    summary=snapshot.get('issued_quote_values')
+    if not isinstance(summary,dict):
+        raise HTTPException(409,'This saved PDF predates locked quotation values. Verify the signed price against an approved snapshot before handover.')
     try:
         payload=from_accepted_pdf_snapshot(snapshot,summary,archive['version'],archive['pdf_sha256'],
                 pilot_snapshot=archive['status']!='Issued' or os.getenv('SMARTQUOTE_LIVE_APPROVED')!='1')
