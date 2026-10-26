@@ -14,6 +14,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from engine import PACKAGES,calc_quote,ROOT,money
 from asset_intelligence import grouped_assets
+from staged_contracts import machine_sort_key
 
 INK=HexColor('#101813');BORDER=colors.black;MUTED=HexColor('#536166');CYAN=HexColor('#15B9E5');WHITE=colors.white;PULSE_DARK=HexColor('#07190D')
 def e(x):return escape(str(x if x is not None else ''))
@@ -64,16 +65,20 @@ def create_quote_pdf(q):
  meta=table_base(refs,[31*mm,35*mm,67*mm,47*mm],[('BOX',(0,0),(-1,-1),.6,BORDER),('INNERGRID',(0,0),(-1,-1),.45,BORDER)],padding=5)
  story.append(meta);story.append(Spacer(1,3*mm))
  tier=q.get('tier','Gold');pkg=PACKAGES.get(tier,PACKAGES['Gold'])
- summaryrow=table_base([[P(f'<b>Maintenance Agreement:</b> {e(tier)}'),P(f'<b>Agreement Term:</b> {e(s["term"])} year(s)'),P(f'<b>Planned Service Visits:</b> {e(q.get("visits",1))} / year')]],[75*mm,51*mm,54*mm], [('BOX',(0,0),(-1,-1),.45,BORDER)],padding=5)
+ staged=s.get('staged') or {}
+ term_label=f'{e(staged["start"])} to {e(staged["end"])}' if staged.get('start') and staged.get('end') else f'{e(s["term"])} year(s)'
+ summaryrow=table_base([[P(f'<b>Maintenance Agreement:</b> {e(tier)}'),P(f'<b>Contract Period:</b> {term_label}'),P(f'<b>Planned Service Visits:</b> {e(q.get("visits",1))} / year')]],[75*mm,51*mm,54*mm], [('BOX',(0,0),(-1,-1),.45,BORDER)],padding=5)
  story.append(summaryrow);story.append(Spacer(1,2*mm))
  # Customer-facing schedule follows the supplied maintenance agreement (Schedule 3):
  # machine, description, quantity and serial number(s), with a single overall
  # contract total. Individual internal RRP and tariff figures stay in the editor.
- columns=['Machine','Description','Qty','Serial Number(s)']
- widths=[28*mm,83*mm,15*mm,54*mm]
+ is_staged=bool(staged.get('enabled'))
+ columns=['Machine','Description','Qty','Serial Number(s)']+(['Cover From','Period Cost'] if is_staged else [])
+ widths=[28*mm,83*mm,15*mm,54*mm] if not is_staged else [25*mm,60*mm,12*mm,43*mm,19*mm,21*mm]
  line_items=[[P('<b>'+x+'</b>','invHead') for x in columns]]
  costs={a['id']:a['price'] for a in s['lines']}
- display_groups=[g for g in grouped_assets(q.get('assets',[]),costs) if not g['representative'].get('excluded')]
+ stages={row['id']:row for row in staged.get('lines',[])}
+ display_groups=sorted((g for g in grouped_assets(q.get('assets',[]),costs) if not g['representative'].get('excluded')),key=machine_sort_key)
  includes=[a for a in q.get('assets',[]) if not a.get('excluded')]
  for i,g in enumerate(display_groups,1):
   a=g['representative'];sel=a.get('selected') or {}
@@ -84,37 +89,49 @@ def create_quote_pdf(q):
   sku=a.get('code') or a.get('model') or sel.get('model') or '—'
   serials=[str(n) for n in g['serials'] if str(n).strip()]
   serial_text=', '.join(serials) if serials else 'Not provided'
-  line_items.append([P(e(sku),'invCell'),description,P(str(g['qty']),'invCell'),P(e(serial_text),'invCell')])
- if not includes:line_items.append([P('—')]*4)
+  line=[P(e(sku),'invCell'),description,P(str(g['qty']),'invCell'),P(e(serial_text),'invCell')]
+  if is_staged:
+   covered=a.get('cover_start') or q.get('contract_start') or 'To confirm'
+   period=money(sum(stages.get(id,{}).get('period_charge',0) for id in g['ids']))
+   line.extend([P(e(covered),'invCell'),P(gbp(period) if all(id in stages for id in g['ids']) else 'TBC','invCell')])
+  line_items.append(line)
+ if not includes:line_items.append([P('—')]*len(columns))
  lines=Table(line_items,colWidths=widths,repeatRows=1,hAlign='LEFT')
  lines.setStyle(TableStyle([('BOX',(0,0),(-1,0),.7,BORDER),('LINEBELOW',(0,0),(-1,0),.7,BORDER),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,0),6),('BOTTOMPADDING',(0,0),(-1,0),6),('TOPPADDING',(0,1),(-1,-1),3),('BOTTOMPADDING',(0,1),(-1,-1),4),('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),('LINEBELOW',(0,1),(-1,-1),.25,HexColor('#DDDDDD'))]))
  story.append(lines)
- story.append(P('The equipment schedule lists the covered machines and serial numbers. Internal unit pricing and catalogue reference details are not displayed here.','invMuted'))
+ story.append(P('Equipment is listed in ascending item-code order. '+('Each cover date has the same contract end date; period cost is the pro-rata charge for that machine group through contract expiry.' if is_staged else 'Internal unit pricing and catalogue reference details are not displayed here.'),'invMuted'))
  if s['priced_rows']!=len(includes):story.append(P('<b>INCOMPLETE QUOTATION: unpriced equipment must be resolved or formally excluded.</b>','invWarning'))
  historic_only=sum(1 for a in includes if costs.get(a['id']) and costs[a['id']].get('basis')=='historic-reference')
  if historic_only:story.append(P(f'<b>DRAFT PRICING: {historic_only} lines use an OLD RRP reference, not a current approved sales price. Do not issue until revalidated.</b>','invWarning'))
  if s.get('excluded_rows'):
   story.append(Spacer(1,4*mm))
   story.append(P('<b>Equipment excluded from this quotation</b>','invHead'))
-  for a in q.get('assets',[]):
+  for a in sorted(q.get('assets',[]),key=machine_sort_key):
    if a.get('excluded'):story.append(P('• '+e(a.get('display_name') or a.get('name') or a.get('code') or 'Unidentified machine')+' — '+e(a.get('exclusion_reason') or 'Reason not supplied'),'invMuted'))
  # The original invoice leaves a large flexible area between lines and totals.
  # Use a modest gap so busy item lists still paginate naturally.
  story.append(Spacer(1,0 if len(includes)>4 else 12*mm))
- net=s['annual'];vat=money(net*.20);gross=money(net+vat)
- totals=table_base([[P('<b>PRICED LINES NET</b>' if s['priced_rows']!=len(includes) else '<b>NET (ANNUAL)</b>','invHead'),P(gbp(net),'invHead')],[P('<b>VAT (20%)</b>','invHead'),P(gbp(vat),'invHead')],[P('<b>GROSS (ANNUAL)</b>','invHead'),P(gbp(gross),'invHead')]], [42*mm,29*mm], [('BOX',(0,0),(-1,-1),.7,BORDER),('INNERGRID',(0,0),(-1,-1),.5,BORDER)],padding=6)
+ net=s['term_total'] if is_staged and staged.get('total') is not None else s['annual'];vat=money(net*.20);gross=money(net+vat)
+ totals=table_base([[P('<b>PRICED LINES NET</b>' if s['priced_rows']!=len(includes) else '<b>NET (CONTRACT PERIOD)</b>' if is_staged else '<b>NET (ANNUAL)</b>','invHead'),P(gbp(net),'invHead')],[P('<b>VAT (20%)</b>','invHead'),P(gbp(vat),'invHead')],[P('<b>GROSS (CONTRACT PERIOD)</b>' if is_staged else '<b>GROSS (ANNUAL)</b>','invHead'),P(gbp(gross),'invHead')]], [42*mm,29*mm], [('BOX',(0,0),(-1,-1),.7,BORDER),('INNERGRID',(0,0),(-1,-1),.5,BORDER)],padding=6)
  totals.hAlign='RIGHT'
  story.append(totals)
  story.append(Spacer(1,2*mm))
- summary_title = 'PARTIAL QUOTED LINES SUBTOTAL' if s['priced_rows']!=len(includes) else ('PROVISIONAL ANNUAL TOTAL — HISTORIC RRPs INCLUDED' if historic_only else 'Annual maintenance quotation')
+ summary_title = 'PARTIAL QUOTED LINES SUBTOTAL' if s['priced_rows']!=len(includes) else ('PROVISIONAL ANNUAL TOTAL — HISTORIC RRPs INCLUDED' if historic_only else 'Contract value with planned start dates' if is_staged else 'Annual maintenance quotation')
  scope_note = 'This is NOT a full price for the contracted equipment; unpriced machines are excluded from this subtotal.' if s['priced_rows']!=len(includes) else 'Future indexation not included.'
- story.append(P(f'<b>{e(summary_title)}:</b> {gbp(net)} excluding VAT. <b>Term equivalent ({s["term"]} year(s)):</b> {gbp(s["term_total"])} excluding VAT. {e(scope_note)}','invSmall'))
+ if is_staged:
+  story.append(P(f'<b>{e(summary_title)}:</b> {gbp(net)} excluding VAT, calculated from the individual equipment commencement dates to the common expiry date. <b>Full-year value once all equipment is covered:</b> {gbp(s["annual"])} excluding VAT. {e(scope_note)}','invSmall'))
+  story.append(Spacer(1,2*mm))
+  story.append(P('<b>Planned commencement schedule (not an invoice or proof of activation)</b>','invHead'))
+  for bucket in staged.get('stages',[]):
+   story.append(P(f'{e(bucket["start"])}: {bucket["count"]} machine(s) – {gbp(bucket["amount"])} planned cover through {e(staged.get("end") or "expiry")} (ex VAT).','invSmall'))
+ else:
+  story.append(P(f'<b>{e(summary_title)}:</b> {gbp(net)} excluding VAT. <b>Term equivalent ({s["term"]} year(s)):</b> {gbp(s["term_total"])} excluding VAT. {e(scope_note)}','invSmall'))
  if s.get('estimated_rows'):
   story.append(P('INDICATIVE EQUIPMENT PRICING: Some lines use a current product-family retail price because the historic machine SKU or console generation is not in the current price list. These are reference comparisons, not verified like-for-like replacements. Confirm the equipment and coverage before sending a binding quotation.','invMuted'))
  if (q.get('renewal') or {}).get('fixed_price_extension'):
   story.append(P('EXISTING CONTRACT OPTION: This agreement may contain an extension at the previously agreed annual price. Check that option and its terms before offering a replacement rate.','invWarning'))
  story.append(Spacer(1,3*mm))
- notes=[P('<b>Quotation Information</b>','invHead'),P('<b>Maintenance package:</b> '+e(tier)+' — '+e(pkg['subtitle']),'invSmall'),P('<b>Included:</b> '+e('; '.join(pkg['highlights'])),'invSmall'),P('<b>Exclusions:</b> '+e(pkg['exclusions']),'invSmall'),P('Prices exclude VAT unless stated. Figures describe the annual cover of the included equipment only. The monthly equivalent is not a confirmed Direct Debit payment plan. Any additional preventative maintenance visits or site-specific works require separate written approval. The signed Pulse Fitness Maintenance Agreement governs service obligations, payment arrangements and exclusions.','invSmall')]
+ notes=[P('<b>Quotation Information</b>','invHead'),P('<b>Maintenance package:</b> '+e(tier)+' — '+e(pkg['subtitle']),'invSmall'),P('<b>Included:</b> '+e('; '.join(pkg['highlights'])),'invSmall'),P('<b>Exclusions:</b> '+e(pkg['exclusions']),'invSmall'),P('Prices exclude VAT unless stated. Staged contract charges include future scheduled cover; payment dates must be agreed separately. Figures describe the annual cover of the included equipment only. The monthly equivalent is not a confirmed Direct Debit payment plan. Any additional preventative maintenance visits or site-specific works require separate written approval. The signed Pulse Fitness Maintenance Agreement governs service obligations, payment arrangements and exclusions.','invSmall')]
  story.append(KeepTogether(notes))
  story.append(Spacer(1,2*mm))
  story.append(P('<b>Prepared by:</b> '+e(q.get('prepared_by') or 'Pulse Fitness Aftersales')+' &nbsp;&nbsp; | &nbsp;&nbsp; <b>For enquiries:</b> +44 (0)1260 294600 · info@pulsefitness.com','invMuted'))

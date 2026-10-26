@@ -82,7 +82,7 @@ def group_key(asset,price=None):
             key(sel.get('console')),key(asset.get('manual_annual_unit')),
             key(asset.get('excluded')),key(asset.get('exclusion_reason')),key(asset.get('contract_note')),
             key((price or {}).get('unit')),key((price or {}).get('basis')),
-            key(asset.get('qty_issue')))
+            key(asset.get('qty_issue')),key(asset.get('cover_start')))
 
 def grouped_assets(assets,price_by_id=None):
     """Make display groups only; original list/individual IDs remain intact."""

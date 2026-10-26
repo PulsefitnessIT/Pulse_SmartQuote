@@ -326,3 +326,20 @@ button:disabled{cursor:not-allowed;opacity:.6}
 .catalogue-machine-link:focus-visible{outline:2px solid #1a83bc;outline-offset:4px;border-radius:3px}
 
 .status.sage-fallback{background:#eef6fb;color:#2b6482;border-color:#d7e6ed}
+/* Optional multi-start cover builder: grouped dates instead of one modal per machine */
+.staged-planner{border:1px solid #d3e3ec}
+.staged-board{display:flex;flex-wrap:wrap;gap:12px;padding-top:10px}
+.stage-bucket{min-width:165px;flex:1 1 185px;min-height:100px;padding:12px;border:2px dashed #c4d3dd;border-radius:12px;background:#f6fafc;display:flex;flex-direction:column;gap:7px;transition:background .14s,border-color .14s}
+.stage-bucket.stage-over{border-color:#1474b5;background:#d8eefc}
+.stage-bucket-head{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.stage-bucket-head strong{font-size:13px;color:#163e55}
+.stage-bucket small{font-size:11px;color:#536a79}
+.stage-drop-hint{font-size:11px;color:#5c7b8a}
+.stage-remove{border:0;background:none;color:#667e89;font-size:18px;line-height:1;cursor:pointer}
+.staged-totals{margin-top:11px;padding:10px 12px;background:#eef5f7;border-radius:8px;color:#1b5268;font-weight:650;font-size:12px}
+.stage-select-label{display:inline-flex;align-items:center;gap:4px;margin-right:9px;font-size:11px;color:#526b7a;white-space:nowrap;cursor:grab}
+.stage-select-label input{width:15px;height:15px;accent-color:#166ca6}
+.asset-table tr[draggable="true"]{cursor:grab}
+.asset-table tr[draggable="true"]:active{cursor:grabbing}
+.stage-row-dropdown{margin-top:6px;width:100%;max-width:170px;font-size:11px;border:1px solid #d1dce1;border-radius:5px;padding:4px 2px}
+@media(max-width:720px){.stage-bucket{min-width:145px}.stage-row-dropdown{max-width:130px}}

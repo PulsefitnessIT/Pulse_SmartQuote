@@ -1,5 +1,5 @@
 /* Pulse SmartQuote: offline-friendly frontend, no third-party scripts. */
-let state={quote:null,summary:null,bootstrap:null,view:'builder',filter:'all',sort:{key:null,direction:'asc'},groups:[],token:sessionStorage.getItem('smartquote_token'),user:null};
+let state={quote:null,summary:null,bootstrap:null,view:'builder',filter:'all',sort:{key:null,direction:'asc'},groups:[],stageSelected:new Set(),token:sessionStorage.getItem('smartquote_token'),user:null};
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'£'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
 const toast=(message,error=false)=>{const t=$('toast');t.innerText=message;t.className='toast'+(error?' error':'');setTimeout(()=>{t.className='toast hidden'},5000)};
@@ -47,7 +47,7 @@ async function launchWorkspace(){
  $('loginGate').classList.add('hidden');
 }
 async function newQuote(){const d=await api('/api/quotes',{method:'POST'});apply(d);localStorage.setItem('pulse_quote_id',d.quote.id);render();showView('builder')}
-function apply(data){state.quote=data.quote;state.summary=data.summary;state.groups=data.display_groups||[]}
+function apply(data){if(state.quote?.id!==data.quote?.id)state.stageSelected.clear();state.quote=data.quote;state.summary=data.summary;state.groups=data.display_groups||[]}
 function viewData(){return {q:state.quote,s:state.summary}}
 function sortEquipmentGroups(groups, priceById, summaryLines){
  const spec=state.sort||{};if(!spec.key)return groups;
@@ -91,6 +91,51 @@ function compactMachineDescription(value){
  const console=screen?screen[0].replace(/\s+/g,' ').replace(/.*?(10\.1|18\.5|7)/,'$1').replace(/\bconsole\b/gi,'').trim():'';
  return (name+(console?' · '+console:'')).slice(0,135);
 }
+function stageDay(iso){if(!iso)return 'Contract start';return new Date(iso+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})}
+function renderStagedPlanner(){
+ const q=state.quote,s=state.summary,stage=s.staged||{},board=$('stagedBoard');
+ $('contractStartDate').value=q.contract_start||'';$('contractEndDate').value=q.contract_end||'';
+ if(!q.contract_start||!q.contract_end){board.innerHTML='<p class="editor-hint">Enter the contract start and end dates to start arranging machines. Until then, normal annual quoting is unchanged.</p>';$('stagedTotals').classList.add('hidden');return}
+ const allDates=['',...(q.stage_dates||[])],valid=q.assets.filter(a=>!a.excluded),totals=Object.fromEntries((stage.stages||[]).map(x=>[x.start,x]));
+ board.innerHTML=allDates.map(d=>{
+  const starts=d||q.contract_start,assets=valid.filter(a=>(a.cover_start||q.contract_start)===starts),priced=totals[starts];
+  const qty=assets.reduce((n,a)=>n+Number(a.qty||0),0);
+  return `<div class="stage-bucket" data-stage-target="${esc(d)}" role="region" aria-label="Drop equipment for ${esc(stageDay(starts))}"><div class="stage-bucket-head"><strong>${esc(stageDay(starts))}</strong>${d?`<button type="button" class="stage-remove" data-stage-remove="${esc(d)}" title="Remove unused date group">×</button>`:'<small>First cover</small>'}</div><small>${qty} machines · ${money(priced?.amount||0)} contracted value</small><div class="stage-drop-hint">Drop machine(s) here</div></div>`
+ }).join('');
+ board.querySelectorAll('[data-stage-target]').forEach(zone=>{
+  zone.ondragover=e=>{if([...e.dataTransfer.types].includes('application/x-smartquote-stage')){e.preventDefault();zone.classList.add('stage-over')}};
+  zone.ondragleave=()=>zone.classList.remove('stage-over');
+  zone.ondrop=e=>{e.preventDefault();zone.classList.remove('stage-over');try{const ids=JSON.parse(e.dataTransfer.getData('application/x-smartquote-stage'));assignStage(ids,zone.dataset.stageTarget)}catch(error){toast(error.message,true)}};
+ });
+ board.querySelectorAll('[data-stage-remove]').forEach(b=>b.onclick=async()=>{try{const d=await api('/api/quotes/'+state.quote.id+'/stages/'+b.dataset.stageRemove,{method:'DELETE'});apply(d);render()}catch(e){toast(e.message,true)}});
+ const total=$('stagedTotals');total.classList.toggle('hidden',stage.total==null);if(stage.total!=null)total.textContent=`Full annual cover: ${money(s.annual)} · Contract value through ${stageDay(q.contract_end)}: ${money(stage.total)} (ex VAT; all staged start dates included)`;
+}
+async function addStageDate(){
+ try{
+  const date=$('newStageDate').value;if(!date)throw Error('Choose the date when the next group of machines starts.');
+  await saveQueue.catch(()=>{});
+  const result=await api('/api/quotes/'+state.quote.id+'/stages',{method:'POST',body:JSON.stringify({start_date:date})});apply(result);render();$('newStageDate').value='';
+ }catch(e){toast(e.message,true)}
+}
+async function assignStage(ids,date){
+ try{
+  await saveQueue.catch(()=>{});
+  const d=await api('/api/quotes/'+state.quote.id+'/stages/assign',{method:'POST',body:JSON.stringify({asset_ids:ids,start_date:date})});
+  apply(d);state.stageSelected.clear();render();toast(`${ids.length} equipment line(s) moved to ${stageDay(date||state.quote.contract_start)}.`);
+ }catch(e){toast(e.message,true)}
+}
+function bindEquipmentStages(){
+ document.querySelectorAll('[data-stage-check]').forEach(box=>box.onchange=()=>{
+  const ids=box.dataset.stageCheck.split(',');ids.forEach(id=>box.checked?state.stageSelected.add(id):state.stageSelected.delete(id));
+ });
+ document.querySelectorAll('[data-stage-drag]').forEach(row=>{
+  row.ondragstart=e=>{
+   const rowIds=row.dataset.stageDrag.split(',');const ids=rowIds.some(id=>state.stageSelected.has(id))?[...state.stageSelected]:rowIds;
+   e.dataTransfer.setData('application/x-smartquote-stage',JSON.stringify(ids));e.dataTransfer.effectAllowed='move';
+  };
+ });
+ document.querySelectorAll('[data-stage-choice]').forEach(select=>select.onchange=()=>assignStage(select.dataset.stageChoice.split(','),select.value));
+}
 function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').textContent=q.quote_no;$('summaryCode').textContent=q.quote_no;$('pipelineStatus').value=q.pipeline_status||'Draft';$('pipelineNote').value=q.pipeline_note||'';
  ['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{if($(k))$(k).value=(k==='valid_days'?q[k]??30:q[k]??'')});
  $('tierOptions').innerHTML=Object.entries(state.bootstrap.packages).map(([tier,p])=>`<button class="tier-card ${q.tier===tier?'active':''}" data-tier="${tier}"><span>${tier==='Silver'?'ESSENTIAL':tier==='Gold'?'RECOMMENDED':'COMPREHENSIVE'}</span><strong>${esc(tier)}</strong><small>${esc(p.subtitle)}</small></button>`).join('');
@@ -121,6 +166,7 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
  const displayed=state.groups.length?state.groups:q.assets.map(a=>({representative:a,qty:a.qty,ids:[a.id],serials:a.serial?[a.serial]:[],source_rows:[a.source_row],price:pmap[a.id]}));
  const filtered=state.filter==='issues'?displayed.filter(g=>g.ids.some(id=>todo.some(a=>a.id===id))):displayed;
  const shown=sortEquipmentGroups(filtered,pmap,s.lines);bindAssetSort();
+ renderStagedPlanner();
  $('assetBody').innerHTML=shown.length?shown.map(g=>{
   const a={...g.representative,qty:g.qty};
   const selected=a.selected,pr=g.price;
@@ -135,9 +181,13 @@ function render(){if(!state.quote)return;const{q,s}=viewData();$('quoteNumber').
   const serials=(g.serials||[]).filter(Boolean);
   const serialText=serials.length?serials.join(', '):'Not provided';
   const shortPrice=a.excluded?'—':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.unit/12):money(pr.unit/12)):guide?`Guide ${guideText}`:'TBC';
-  return `<tr class="${a.excluded?'is-excluded':''}"><td class="contract-machine"><b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b title="${esc(name)}">${esc(visibleName)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='sage-static-fallback'?`Sage ${esc(pr.rrp_source_date)} · review ${esc(pr.rrp_review_due)}`:pr?.basis==='source-rrp-calculated'?'Source RRP · tariff sign-off at quote level':pr?.basis==='staff-guided-estimate'?'Source RRP · configuration review':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button></td></tr>`;
+  const stageStart=s.staged?.enabled&&!a.excluded?' draggable="true" data-stage-drag="'+esc(g.ids.join(','))+'"':'';
+  const stageCheck=s.staged?.enabled&&!a.excluded?'<label class="stage-select-label" title="Select for group move"><input type="checkbox" data-stage-check="'+esc(g.ids.join(','))+'" '+(g.ids.every(id=>state.stageSelected.has(id))?'checked':'')+'><span>Drag</span></label>':'';
+  const stageChoice=s.staged?.enabled&&!a.excluded?'<select class="stage-row-dropdown" data-stage-choice="'+esc(g.ids.join(','))+'" title="Cover start date"><option value="" '+(!a.cover_start?'selected':'')+'>Contract start</option>'+(q.stage_dates||[]).map(d=>'<option value="'+esc(d)+'" '+(d===a.cover_start?'selected':'')+'>'+esc(d)+'</option>').join('')+'</select>':'';
+  return `<tr class="${a.excluded?'is-excluded':''}"${stageStart}><td class="contract-machine">${stageCheck}<b>${esc(identifier)}</b><small class="machine-serials">Serial${serials.length===1?'':'s'}: ${esc(serialText)}</small></td><td class="contract-description"><b title="${esc(name)}">${esc(visibleName)}</b>${a.contract_note?`<small>${esc(a.contract_note)}</small>`:''}</td><td>${esc(a.qty)}</td><td><span class="price-col">${shortPrice}</span><small>${!pr&&guide?'Range only · source RRP':pr?.basis==='sage-static-fallback'?`Sage ${esc(pr.rrp_source_date)} · review ${esc(pr.rrp_review_due)}`:pr?.basis==='source-rrp-calculated'?'Source RRP · tariff sign-off at quote level':pr?.basis==='staff-guided-estimate'?'Source RRP · configuration review':'per machine · ex VAT'}</small></td><td><span class="price-col">${a.excluded?'EXCLUDED':pr?(pr.basis==='staff-guided-estimate'?'Draft '+money(pr.annual):money(pr.annual)):guide?'Guide '+(guide.min_monthly_unit===guide.max_monthly_unit?money(guide.min_monthly_unit*g.qty*12):money(guide.min_monthly_unit*g.qty*12)+'–'+money(guide.max_monthly_unit*g.qty*12)):'TBC'}</span></td><td><span class="status ${cls}">${label}</span><br><button class="review-btn" data-review="${esc(a.id)}">Edit machine</button><button class="tiny-del" title="Permanently remove line" data-delete="${esc(a.id)}">✕</button>${stageChoice}</td></tr>`;
  }).join(''):'<tr><td colspan="6" class="empty-table">'+(state.filter==='issues'?'All included equipment has a price. Choose All equipment or generate your PDF.':'Drop in an asset list or try the sample import to begin.')+'</td></tr>';
  document.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>review(b.dataset.review));document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>removeAsset(b.dataset.delete));
+ bindEquipmentStages();
  let matched=q.assets.filter(a=>a.selected&&!a.excluded).length,excluded=q.assets.filter(a=>a.excluded).length;
  $('matchBreakdown').textContent=`${s.priced_rows} prices calculated · ${todo.length} equipment exceptions · ${excluded} excluded`;
  const health=s.issues.slice(0,9);$('healthList').innerHTML=health.length?health.map(v=>`<div class="health-item">${esc(v)}</div>`).join('')+(s.issues.length>9?`<div class="health-item">+${s.issues.length-9} more issues — see equipment list</div>`:''):'<div class="health-item healthy">Everything needed is in place. Click Generate Quote PDF.</div>';
@@ -164,7 +214,7 @@ function updateGuidance(){
  document.querySelectorAll('.stepbar .step').forEach((el,i)=>{el.classList.toggle('active',i===phase);el.classList.toggle('complete',i<phase)});
 }
 
-function collect(){let v={};['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>v[k]=$(k).value);v.tier=state.quote.tier;if(state.quote.renewal?.fixed_price_extension)v.renewal_option_checked=!!$('renewalOptionChecked')?.checked;return v}
+function collect(){let v={};['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>v[k]=$(k).value);v.tier=state.quote.tier;v.contract_start=$('contractStartDate').value;v.contract_end=$('contractEndDate').value;if(state.quote.renewal?.fixed_price_extension)v.renewal_option_checked=!!$('renewalOptionChecked')?.checked;return v}
 function saveDetails(quiet=false){
  const quoteId=state.quote.id,values=collect();saveMessage('Saving changes…');
  const task=saveQueue.catch(()=>{}).then(async()=>{
@@ -966,6 +1016,7 @@ function bind(){
   catalogueSelection.clear();updateCataloguePrintCount();
   $('catalogResults').querySelectorAll('[data-catalog-select]').forEach(x=>x.checked=false);
  };
+ $('addStageDate').onclick=addStageDate;['contractStartDate','contractEndDate'].forEach(id=>$(id).addEventListener('change',()=>saveDetails(true)));
  $('saveDetails').onclick=()=>saveDetails();['customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','term','discount','visits'].forEach(k=>{const el=$(k);if(el){el.addEventListener('change',()=>saveDetails(true));el.addEventListener('input',()=>saveMessage('Unsaved edits…'));}});$('filePicker').onchange=e=>{stageUploadFiles(e.target.files);e.target.value='';};$('browseButton').onclick=()=>$('filePicker').click();$('reviewInvoiceBatch').onclick=reviewStagedInvoices;$('clearUploadQueue').onclick=()=>{stagedUploads=[];invoiceReviewClear();renderStagedUploads();};$('loadSample').onclick=()=>importFile(sampleCsv());$('undoLastImport').onclick=undoLastImport;$('downloadPdf').onclick=downloadPdf;$('quoteVersions').onclick=versions;$('savePipeline').onclick=recordPipeline;$('manualAdd').onclick=manualAdd;$('reviewAll').onclick=()=>{state.filter='all';render()};$('reviewIssues').onclick=()=>{state.filter='issues';render()};$('nextIssue').onclick=()=>reviewNext();$('batchReview').onclick=()=>openBulkReview();$('downloadMatchReport').onclick=downloadMatchingReport;$('downloadSourceRegister').onclick=()=>downloadAssetRegister();$('closeModal').onclick=()=>$('modal').classList.add('hidden');$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.add('hidden')};$('catalogSearch').oninput=()=>{clearTimeout(window.searchTimer);window.searchTimer=setTimeout(searchCatalogue,270)};
  $('managerSearch').oninput=()=>{clearTimeout(window.managerTimer);window.managerTimer=setTimeout(searchManager,260)};
  $('rrp2026Query').oninput=()=>{rrp2026Offset=0;clearTimeout(rrp2026Timer);rrp2026Timer=setTimeout(searchRrp2026,250)};

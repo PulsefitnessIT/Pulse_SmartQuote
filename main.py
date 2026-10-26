@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from engine import ROOT,PRICING,PACKAGES,ingest,match_asset,calc_quote,selection_issues,BY_SKU,BY_KEY,DUPLICATE_CODES,CAT,CONFIG,sku_option,config_option,search_products,price_line,decorate_option,suggest_unknown,live_catalogue_option
 from quote_pdf import create_quote_pdf
+from staged_contracts import valid_contract,parse_date
 from agreement_import import read_agreement_pdf
 from invoice_import import read_invoice_pdf, PLACEHOLDER_SERIALS
 from document_classifier import classify_document
@@ -78,7 +79,7 @@ def conn():
  c.commit();return c
 
 def defaults():
- return {'id':uuid.uuid4().hex,'quote_no':'','created':datetime.date.today().isoformat(),'updated':datetime.datetime.now().isoformat(timespec='seconds'),'customer':'','site':'','contact':'','contact_email':'','prepared_by':'Pulse Fitness Aftersales','billing_address':'','delivery_address':'','customer_ref':'','account_ref':'','contract_ref':'','valid_days':30,'tier':'Gold','level':'Standard','term':1,'visits':1,'discount':0,'approver':'','approval_note':'','pricing_approved':False,'line_reviews_approved':False,'assets':[],'warnings':[],'files':[],'status':'Draft','pipeline_status':'Draft','renewal':None,'renewal_option_checked':False}
+ return {'id':uuid.uuid4().hex,'quote_no':'','created':datetime.date.today().isoformat(),'updated':datetime.datetime.now().isoformat(timespec='seconds'),'customer':'','site':'','contact':'','contact_email':'','prepared_by':'Pulse Fitness Aftersales','billing_address':'','delivery_address':'','customer_ref':'','account_ref':'','contract_ref':'','valid_days':30,'tier':'Gold','level':'Standard','term':1,'visits':1,'discount':0,'approver':'','approval_note':'','pricing_approved':False,'line_reviews_approved':False,'assets':[],'warnings':[],'files':[],'status':'Draft','pipeline_status':'Draft','renewal':None,'renewal_option_checked':False,'contract_start':'','contract_end':'','stage_dates':[]}
 
 def persist(q):
  q['catalogue_revision']=admin.revision()
@@ -683,7 +684,7 @@ async def import_old_calcs(id:str,request:Request):
 @app.put('/api/quotes/{id}')
 async def save(id:str,request:Request):
  q=getq(id);data=await request.json()
- allowed={'customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','tier','term','visits','discount','approval_note','renewal_option_checked'}
+ allowed={'customer','site','contact','contact_email','prepared_by','billing_address','delivery_address','customer_ref','account_ref','contract_ref','valid_days','tier','term','visits','discount','approval_note','renewal_option_checked','contract_start','contract_end'}
  for k,v in data.items():
   if k in allowed:q[k]=v
  if q['tier'] not in PRICING['tiers']:raise HTTPException(400,'Unknown package')
@@ -694,8 +695,62 @@ async def save(id:str,request:Request):
   if not (0<=int(q['visits'])<=12):raise ValueError()
   if not (1<=int(q['valid_days'])<=180):raise ValueError()
  except:raise HTTPException(400,'Check discount (0-60%), term (1-5 years), and visits (0-12).')
+ if q.get('contract_start') and q.get('contract_end'):
+  try:begin,end=valid_contract(q['contract_start'],q['contract_end'])
+  except ValueError as exc:raise HTTPException(400,str(exc))
+  for date_value in q.get('stage_dates',[]):
+   if not begin < parse_date(date_value) <= end:raise HTTPException(400,'A saved stage falls outside the new contract dates. Move or remove it first.')
+  for item in q.get('assets',[]):
+   if item.get('cover_start') and not begin <= parse_date(item['cover_start']) <= end:
+    raise HTTPException(400,'An equipment start date falls outside the new contract dates.')
+ elif q.get('stage_dates') or any(a.get('cover_start') for a in q.get('assets',[])):
+  raise HTTPException(400,'Keep both contract dates while staged equipment exists. Move equipment back to contract start first.')
  q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
  result=public(persist(q));record_event(id,actor(request)['username'],'QUOTE_SETTINGS_UPDATED');return result
+@app.post('/api/quotes/{id}/stages')
+async def create_start_stage(id:str,request:Request):
+ q=getq(id);data=await request.json()
+ try:
+  begin,end=valid_contract(q.get('contract_start'),q.get('contract_end'))
+  chosen=parse_date(data.get('start_date'))
+  if not begin < chosen <= end:raise ValueError('Choose a start date after the contract begins and no later than its end.')
+ except (TypeError,ValueError) as exc:raise HTTPException(400,str(exc))
+ dates=set(q.get('stage_dates') or [])
+ if len(dates)>=40 and chosen.isoformat() not in dates:raise HTTPException(400,'Maximum 40 future date groups per quotation.')
+ dates.add(chosen.isoformat());q['stage_dates']=sorted(dates)
+ result=public(persist(q));record_event(id,actor(request)['username'],'COVER_START_GROUP_CREATED',chosen.isoformat());return result
+
+@app.delete('/api/quotes/{id}/stages/{date_value}')
+def delete_start_stage(id:str,date_value:str,request:Request):
+ q=getq(id)
+ if date_value not in (q.get('stage_dates') or []):raise HTTPException(404,'Date group not found')
+ if any(a.get('cover_start')==date_value for a in q['assets']):
+  raise HTTPException(409,'Move equipment back to the contract start or another date group before removing this date.')
+ q['stage_dates']=[x for x in q['stage_dates'] if x!=date_value]
+ result=public(persist(q));record_event(id,actor(request)['username'],'COVER_START_GROUP_REMOVED',date_value);return result
+
+@app.post('/api/quotes/{id}/stages/assign')
+async def assign_start_stage(id:str,request:Request):
+ q=getq(id);data=await request.json()
+ try:begin,end=valid_contract(q.get('contract_start'),q.get('contract_end'))
+ except (TypeError,ValueError) as exc:raise HTTPException(400,'Set the contract start and end dates before assigning equipment.')
+ raw=data.get('start_date') or ''
+ try:date_value=raw and parse_date(raw).isoformat()
+ except ValueError as exc:raise HTTPException(400,str(exc))
+ if date_value and (date_value not in (q.get('stage_dates') or []) or not begin < parse_date(date_value) <= end):
+  raise HTTPException(400,'Choose one of the saved date groups.')
+ ids=data.get('asset_ids')
+ if not isinstance(ids,list) or not ids or len(ids)>2000 or len(ids)!=len(set(str(x) for x in ids)):
+  raise HTTPException(400,'Select one or more unique machine lines.')
+ matching=[a for a in q['assets'] if a.get('id') in ids]
+ if len(matching)!=len(ids) or any(a.get('excluded') for a in matching):
+  raise HTTPException(400,'Some equipment lines are missing or excluded. Nothing changed.')
+ for item in matching:item['cover_start']=date_value
+ q['pricing_approved']=False;q['line_reviews_approved']=False;q['approver']=''
+ result=public(persist(q))
+ record_event(id,actor(request)['username'],'EQUIPMENT_START_DATES_SET',f'{len(matching)} equipment lines → {date_value or q["contract_start"]}')
+ return result
+
 @app.get('/api/quotes/{id}/match-review/{aid}')
 def match_review(id:str,aid:str):
     """Price-source candidates and source lineage; no automatic resolution."""

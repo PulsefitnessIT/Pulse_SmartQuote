@@ -662,6 +662,8 @@ def _sage_quote_price(asset,level,tier,discount):
    'source_price_field':'Sales Price (Sage export; not verified list RRP)'})
  return p
 
+from staged_contracts import stage_summary
+
 def calc_quote(q):
  """Fast coordinator flow: accurate, complete lines are immediately quotable.
 
@@ -816,6 +818,16 @@ def calc_quote(q):
   summary['lines'].append({'id':a.get('id'),'price':price,'guide':preview_guide,'issues':a.get('issues',[]),
    'pricing_exception':next((x['reason'] for x in summary['pricing_exceptions'] if x['id']==a.get('id')),None)})
  summary['annual']=money(summary['annual']);summary['monthly']=money(summary['annual']/12);summary['term_total']=money(summary['annual']*term)
+ # A staged quotation has one common end date but an individual cover date per machine.
+ # Full annual price stays visible; term_total is the sum of dated cover periods.
+ schedule=stage_summary(q,{line['id']:line.get('price') for line in summary['lines']})
+ summary['staged']=schedule
+ if schedule['enabled']:
+  summary['issues'].extend(schedule['issues'])
+  if schedule['total'] is not None:summary['term_total']=schedule['total']
+  for line in summary['lines']:
+   staged_line=next((x for x in schedule['lines'] if x['id']==line['id']),None)
+   if staged_line:line['stage']=staged_line
  # One commercial control for all routine RRP calculations, not a button
  # press on every correctly identified machine. No false tariff sign-off.
  if summary['automatic_rrp_rows'] and str(PRICING.get('pricing_status','')).lower().startswith('provisional'):
