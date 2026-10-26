@@ -1496,3 +1496,15 @@ async def users_reset(username:str,request:Request):
     try:security.reset_password(username,str(data.get('password','')))
     except ValueError as e:raise HTTPException(400,str(e))
     return {'ok':True}
+
+# Verified optional local handover extension for the no-Python Windows pilot.
+# Existing quotation functionality runs unmodified if the extension is absent.
+# In the contract-handover package, the SHA-256 pin prevents accidental
+# loading of modified or mismatched extension source.
+import hashlib as _handover_hashlib
+_handover_ext=ROOT/'handover_extension.py'
+if _handover_ext.is_file():
+    _handover_src=_handover_ext.read_bytes()
+    if _handover_hashlib.sha256(_handover_src).hexdigest()!='a3bd133e3cb3b17d9e6d920df21a0c8256bc677db3edbdf33082fec9972668e6':
+        raise RuntimeError('Contract handover extension integrity check failed. Re-extract the original ZIP.')
+    exec(compile(_handover_src,str(_handover_ext),'exec'),globals())
